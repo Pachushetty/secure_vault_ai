@@ -1,0 +1,82 @@
+{% extends "base.html" %}
+{% block title %}Verify Your Email — SecureVault{% endblock %}
+{% block content %}
+<div class="gate-wrapper">
+  <div class="gate-card">
+    <div class="gate-icon"><i class="fas fa-envelope-circle-check"></i></div>
+    <h1>Verify your email</h1>
+    <p class="gate-sub">
+      We sent a 6-digit verification code to<br>
+      <strong style="color: var(--brass, #a9822f);">{{ email }}</strong>
+    </p>
+
+    <form method="POST" class="gate-form" id="verifyEmailForm" autocomplete="off">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <div class="form-group" style="text-align:left; margin-bottom:1.5rem;">
+        <label class="form-label" style="display:flex; justify-content:space-between;">
+          <span><i class="fas fa-hashtag"></i> 6-Digit Code</span>
+          <span id="emailExpiryTimer" style="color: var(--brass); font-size: 0.8rem; font-weight: 600;">Expires in 10:00</span>
+        </label>
+        <div class="gate-input-wrap">
+          <i class="fas fa-key gate-input-icon"></i>
+          <input type="text" name="code" id="verificationCodeInput" placeholder="••••••"
+                 class="gate-input" required autofocus maxlength="6" pattern="[0-9]{6}"
+                 style="letter-spacing: 0.3em; font-size: 1.25rem; font-weight: 600; text-align: center;"
+                 inputmode="numeric" autocomplete="one-time-code"/>
+        </div>
+      </div>
+      <button type="submit" class="btn btn-primary btn-full btn-lg" id="verifyEmailBtn">
+        <i class="fas fa-circle-check"></i> Verify & Activate Account
+      </button>
+    </form>
+
+    <div class="gate-divider"><span>Didn't receive the email?</span></div>
+
+    <form method="POST" action="{{ url_for('resend_verification_code') }}" id="resendEmailForm" style="margin-bottom: 0.5rem;">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <button type="submit" class="btn btn-outline btn-full" id="resendEmailBtn">
+        <i class="fas fa-rotate-right"></i> Resend Verification Code
+      </button>
+    </form>
+
+    <a href="{{ url_for('register') }}" class="btn btn-outline btn-full" style="opacity: 0.85;">
+      <i class="fas fa-arrow-left"></i> Change Email or Register Again
+    </a>
+
+    <div class="gate-info" style="margin-top:1.5rem;">
+      <div class="gate-info-item"><i class="fas fa-shield-halved"></i> 10-minute code validity</div>
+      <div class="gate-info-item"><i class="fas fa-lock"></i> Account activates immediately after verification</div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+{% block scripts %}
+<script>
+document.getElementById('verifyEmailForm').addEventListener('submit', function() {
+  setBtnLoading(document.getElementById('verifyEmailBtn'), 'Verifying...');
+});
+document.getElementById('resendEmailForm').addEventListener('submit', function() {
+  setBtnLoading(document.getElementById('resendEmailBtn'), 'Resending...');
+});
+
+const codeInp = document.getElementById('verificationCodeInput');
+codeInp.addEventListener('input', function() {
+  this.value = this.value.replace(/\D/g, '').slice(0, 6);
+});
+
+let duration = 600;
+const timerEl = document.getElementById('emailExpiryTimer');
+const interval = setInterval(function() {
+  duration--;
+  if (duration <= 0) {
+    clearInterval(interval);
+    timerEl.textContent = 'Expired';
+    timerEl.style.color = '#e05c52';
+  } else {
+    const mins = Math.floor(duration / 60);
+    const secs = duration % 60;
+    timerEl.textContent = 'Expires in ' + mins + ':' + (secs < 10 ? '0' : '') + secs;
+  }
+}, 1000);
+</script>
+{% endblock %}

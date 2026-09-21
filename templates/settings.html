@@ -1,0 +1,675 @@
+{% extends "base.html" %}
+{% block title %}Settings — SecureVault{% endblock %}
+{% block content %}
+
+<div class="sett-page">
+
+  <!-- Header -->
+  <div class="sett-header">
+    <h1 class="sett-title">Settings</h1>
+    <p class="sett-sub">Manage your SecureVault preferences</p>
+  </div>
+
+  <!-- ── GENERAL ─────────────────────────────────── -->
+  <div class="sett-section">
+    <div class="sett-section-label">General</div>
+    <div class="sett-card">
+
+      <!-- Theme -->
+      <div class="sett-row" id="themeRow" onclick="cycleTheme()" style="cursor:pointer;">
+        <div class="sett-row-left">
+          <div class="sett-row-icon"><i class="fas fa-palette"></i></div>
+          <div>
+            <div class="sett-row-title">Theme</div>
+            <div class="sett-row-desc">Appearance of the interface</div>
+          </div>
+        </div>
+        <div class="sett-row-right">
+          <span class="sett-value" id="themeLabel">Dark</span>
+          <i class="fas fa-chevron-right sett-chevron"></i>
+        </div>
+      </div>
+
+      <div class="sett-divider"></div>
+
+      <!-- Language -->
+      <div class="sett-row" onclick="openLanguage()" style="cursor:pointer;">
+        <div class="sett-row-left">
+          <div class="sett-row-icon"><i class="fas fa-globe"></i></div>
+          <div>
+            <div class="sett-row-title">Language</div>
+            <div class="sett-row-desc">Interface language</div>
+          </div>
+        </div>
+        <div class="sett-row-right">
+          <span class="sett-value" id="langLabel">English</span>
+          <i class="fas fa-chevron-right sett-chevron"></i>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- ── NOTIFICATIONS ───────────────────────────── -->
+  <div class="sett-section">
+    <div class="sett-section-label">Notifications</div>
+    <div class="sett-card">
+
+      <!-- Security alerts -->
+      <div class="sett-row">
+        <div class="sett-row-left">
+          <div class="sett-row-icon"><i class="fas fa-shield-halved"></i></div>
+          <div>
+            <div class="sett-row-title">Security alerts</div>
+            <div class="sett-row-desc">Login attempts, password changes</div>
+          </div>
+        </div>
+        <div class="sett-row-right">
+          <label class="sett-toggle">
+            <input type="checkbox" id="notifSecurity" onchange="savePref('notifSecurity', this.checked)" checked>
+            <span class="sett-toggle-track"></span>
+          </label>
+        </div>
+      </div>
+
+      <div class="sett-divider"></div>
+
+      <!-- Document activity -->
+      <div class="sett-row">
+        <div class="sett-row-left">
+          <div class="sett-row-icon"><i class="fas fa-bell"></i></div>
+          <div>
+            <div class="sett-row-title">Document activity</div>
+            <div class="sett-row-desc">Uploads, downloads, share link scans</div>
+          </div>
+        </div>
+        <div class="sett-row-right">
+          <label class="sett-toggle">
+            <input type="checkbox" id="notifDocs" onchange="savePref('notifDocs', this.checked)" checked>
+            <span class="sett-toggle-track"></span>
+          </label>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- ── ACCOUNT ─────────────────────────────────── -->
+  <div class="sett-section">
+    <div class="sett-section-label">Account</div>
+    <div class="sett-card">
+
+      <!-- Change Password -->
+      <a href="{{ url_for('change_password_page') }}" class="sett-row sett-row--link">
+        <div class="sett-row-left">
+          <div class="sett-row-icon"><i class="fas fa-key"></i></div>
+          <div>
+            <div class="sett-row-title">Change Password</div>
+            <div class="sett-row-desc">Update your account login credentials</div>
+          </div>
+        </div>
+        <div class="sett-row-right">
+          <i class="fas fa-chevron-right sett-chevron"></i>
+        </div>
+      </a>
+
+      <div class="sett-divider"></div>
+
+      <!-- Password Reset via Email -->
+      <a href="{{ url_for('forgot_password') }}" class="sett-row sett-row--link">
+        <div class="sett-row-left">
+          <div class="sett-row-icon"><i class="fas fa-envelope-open-text"></i></div>
+          <div>
+            <div class="sett-row-title">Password Reset</div>
+            <div class="sett-row-desc">Receive a 6-digit recovery code via Gmail</div>
+          </div>
+        </div>
+        <div class="sett-row-right">
+          <i class="fas fa-chevron-right sett-chevron"></i>
+        </div>
+      </a>
+
+      <div class="sett-divider"></div>
+
+      <!-- Delete Account -->
+      <div class="sett-row sett-row--danger" onclick="openDeleteStep1()" style="cursor:pointer;">
+        <div class="sett-row-left">
+          <div class="sett-row-icon sett-row-icon--danger"><i class="fas fa-trash-can"></i></div>
+          <div>
+            <div class="sett-row-title sett-row-title--danger">Delete Account</div>
+            <div class="sett-row-desc">Permanently erase your account and all data</div>
+          </div>
+        </div>
+        <div class="sett-row-right">
+          <i class="fas fa-chevron-right sett-chevron"></i>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- App info -->
+  <div class="sett-footer">
+    <span>SecureVault</span>
+    <span class="sett-footer-dot">·</span>
+    <span>v1.0</span>
+    <span class="sett-footer-dot">·</span>
+    <a href="{{ url_for('index') }}">Home</a>
+  </div>
+
+</div>
+
+<!-- ── Step 1: Consequences Modal ──────────────── -->
+<div class="sec-modal-overlay hidden" id="deleteStep1">
+  <div class="sec-modal">
+    <div class="sec-modal-icon sec-modal-icon--warn">
+      <i class="fas fa-triangle-exclamation"></i>
+    </div>
+    <h2 class="sec-modal-title">Before you delete your account</h2>
+    <p class="sec-modal-sub">This action is <strong>permanent and irreversible.</strong> The following will be erased immediately:</p>
+    <ul class="sec-consequence-list">
+      <li><i class="fas fa-user-slash"></i> Your SecureVault account and login credentials</li>
+      <li><i class="fas fa-folder-open"></i> All folders and every document stored inside them</li>
+      <li><i class="fas fa-link-slash"></i> All share links (recipients lose access instantly)</li>
+      <li><i class="fas fa-clock-rotate-left"></i> Your full activity and audit log history</li>
+      <li><i class="fas fa-robot"></i> All Vault AI knowledge built from your documents</li>
+    </ul>
+    <p class="sec-modal-warn">There is <strong>no backup, no grace period, and no undo.</strong></p>
+    <div class="sec-modal-actions">
+      <button type="button" class="btn btn-outline" onclick="closeDeleteModals()">
+        <i class="fas fa-xmark"></i> Cancel — Keep My Account
+      </button>
+      <button type="button" class="sec-btn--danger-solid" onclick="openDeleteStep2()">
+        I understand, continue
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- ── Step 2: Final Confirm ────────────────────── -->
+<div class="sec-modal-overlay hidden" id="deleteStep2">
+  <div class="sec-modal">
+    <div class="sec-modal-icon sec-modal-icon--red">
+      <i class="fas fa-skull-crossbones"></i>
+    </div>
+    <h2 class="sec-modal-title">Final confirmation</h2>
+    <p class="sec-modal-sub">Type <strong>DELETE</strong> exactly to erase your account forever.</p>
+
+    <form action="{{ url_for('delete_account') }}" method="POST" id="deleteAccountForm"
+          onsubmit="return validateDeleteForm()">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <div class="sec-field">
+        <label class="sec-label sec-label--danger">Type DELETE to confirm</label>
+        <input type="text" name="confirm_text" id="deleteConfirmText"
+               placeholder="DELETE" class="gate-input sec-input--danger"
+               autocomplete="off" required/>
+        <small class="sec-hint sec-hint--danger">Case-sensitive — must match exactly.</small>
+      </div>
+      {% if user.password_hash %}
+      <div class="sec-field" style="margin-top:12px;">
+        <label class="sec-label">Your account password</label>
+        <div class="gate-input-wrap">
+          <i class="fas fa-lock gate-input-icon"></i>
+          <input type="password" name="password" id="deleteAccPw"
+                 placeholder="Enter your password" class="gate-input" required/>
+          <button type="button" class="toggle-pw-gate" onclick="togglePw('deleteAccPw')">
+            <i class="fas fa-eye"></i>
+          </button>
+        </div>
+      </div>
+      {% endif %}
+      <div class="sec-modal-actions" style="margin-top:20px;">
+        <button type="button" class="btn btn-outline" onclick="closeDeleteModals()">
+          <i class="fas fa-xmark"></i> Cancel
+        </button>
+        <button type="submit" class="sec-btn--danger-solid" id="finalDeleteBtn">
+          <i class="fas fa-trash-can"></i> Delete Account
+        </button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<style>
+/* ── Settings page ─────────────────────────────── */
+.sett-page {
+  max-width: 840px;
+  margin: 0 auto;
+  padding: 48px 24px 80px;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.sett-header { margin-bottom: 36px; }
+
+.sett-title {
+  font-family: var(--font-display);
+  font-size: 2.2rem;
+  font-weight: 600;
+  color: var(--ink, #1c1a14);
+  margin: 0 0 6px;
+  letter-spacing: -0.02em;
+}
+
+.sett-sub {
+  font-size: 0.95rem;
+  color: var(--ink-soft, rgba(28,26,20,0.55));
+  margin: 0;
+}
+
+/* Section */
+.sett-section { margin-bottom: 32px; }
+
+.sett-section-label {
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--brass, #a9822f);
+  margin-bottom: 10px;
+  padding-left: 6px;
+}
+
+/* Card */
+.sett-card {
+  background: #fff;
+  border: 1px solid rgba(28,26,20,0.08);
+  border-radius: 16px;
+  overflow: hidden;
+  box-shadow: 0 4px 20px rgba(0,0,0,0.03);
+}
+
+/* Row */
+.sett-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 18px 24px;
+  transition: background 0.15s ease;
+  text-decoration: none;
+  color: inherit;
+  gap: 16px;
+}
+
+.sett-row:hover,
+.sett-row--link:hover {
+  background: rgba(28,26,20,0.03);
+}
+
+.sett-row--danger:hover {
+  background: rgba(185,28,28,0.04);
+}
+
+.sett-row-left {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  flex: 1;
+  min-width: 0;
+}
+
+.sett-row-icon {
+  width: 38px;
+  height: 38px;
+  border-radius: 10px;
+  background: rgba(169,130,47,0.1);
+  border: 1px solid rgba(169,130,47,0.2);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.9rem;
+  color: var(--brass, #a9822f);
+  flex-shrink: 0;
+}
+
+.sett-row-icon--danger {
+  background: rgba(185,28,28,0.08);
+  border-color: rgba(185,28,28,0.2);
+  color: #b91c1c;
+}
+
+.sett-row-title {
+  font-size: 0.94rem;
+  font-weight: 600;
+  color: var(--ink, #1c1a14);
+  margin-bottom: 2px;
+}
+
+.sett-row-title--danger { color: #b91c1c; }
+
+.sett-row-desc {
+  font-size: 0.8rem;
+  color: var(--ink-soft, rgba(28,26,20,0.5));
+}
+
+.sett-row-right {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-shrink: 0;
+}
+
+.sett-value {
+  font-size: 0.88rem;
+  color: var(--ink-soft, rgba(28,26,20,0.6));
+  font-weight: 500;
+}
+
+.sett-chevron {
+  font-size: 0.72rem;
+  color: rgba(28,26,20,0.35);
+}
+
+.sett-divider {
+  height: 1px;
+  background: rgba(28,26,20,0.06);
+  margin: 0 24px;
+}
+
+/* Toggle switch */
+.sett-toggle {
+  position: relative;
+  display: inline-flex;
+  cursor: pointer;
+}
+
+.sett-toggle input {
+  opacity: 0;
+  width: 0;
+  height: 0;
+  position: absolute;
+}
+
+.sett-toggle-track {
+  width: 44px;
+  height: 26px;
+  border-radius: 13px;
+  background: rgba(28,26,20,0.15);
+  transition: background 0.22s ease;
+  position: relative;
+}
+
+.sett-toggle-track::after {
+  content: '';
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.2);
+  transition: transform 0.22s ease;
+}
+
+.sett-toggle input:checked + .sett-toggle-track {
+  background: var(--brass, #a9822f);
+}
+
+.sett-toggle input:checked + .sett-toggle-track::after {
+  transform: translateX(18px);
+}
+
+/* Footer */
+.sett-footer {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  font-size: 0.78rem;
+  color: var(--ink-soft, rgba(28,26,20,0.4));
+  margin-top: 16px;
+}
+
+.sett-footer a {
+  color: var(--brass, #a9822f);
+  text-decoration: none;
+}
+
+.sett-footer-dot { opacity: 0.4; }
+
+/* ── Delete modals (reused from security page) ── */
+.sec-modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(4,8,14,0.75);
+  backdrop-filter: blur(6px);
+  z-index: 500;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+}
+
+.sec-modal-overlay.hidden { display: none; }
+
+.sec-modal {
+  background: #0d1520;
+  border: 1px solid rgba(245,241,232,0.1);
+  border-radius: 18px;
+  padding: 36px 32px;
+  max-width: 480px;
+  width: 100%;
+  box-shadow: 0 32px 72px -12px rgba(0,0,0,0.8);
+  animation: sec-modal-in 0.2s ease;
+}
+
+@keyframes sec-modal-in {
+  from { opacity: 0; transform: scale(0.95) translateY(8px); }
+  to   { opacity: 1; transform: scale(1) translateY(0); }
+}
+
+.sec-modal-icon {
+  width: 52px; height: 52px;
+  border-radius: 14px;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 1.35rem;
+  margin-bottom: 18px;
+}
+
+.sec-modal-icon--warn {
+  background: rgba(202,138,4,0.12);
+  border: 1px solid rgba(202,138,4,0.28);
+  color: #ca8a04;
+}
+
+.sec-modal-icon--red {
+  background: rgba(185,28,28,0.12);
+  border: 1px solid rgba(185,28,28,0.28);
+  color: #e05c52;
+}
+
+.sec-modal-title {
+  font-family: var(--font-display);
+  font-size: 1.2rem; font-weight: 600;
+  color: var(--paper); margin: 0 0 8px;
+}
+
+.sec-modal-sub {
+  font-size: 0.84rem;
+  color: rgba(245,241,232,0.5);
+  margin: 0 0 18px; line-height: 1.55;
+}
+
+.sec-consequence-list {
+  list-style: none; padding: 0; margin: 0 0 14px;
+  display: flex; flex-direction: column; gap: 8px;
+}
+
+.sec-consequence-list li {
+  display: flex; align-items: flex-start; gap: 10px;
+  font-size: 0.82rem; color: rgba(245,241,232,0.68); line-height: 1.45;
+}
+
+.sec-consequence-list i {
+  color: #e05c52; font-size: 0.76rem;
+  margin-top: 3px; flex-shrink: 0; width: 14px;
+}
+
+.sec-modal-warn {
+  font-size: 0.82rem; color: #e05c52;
+  margin: 0 0 22px; padding: 10px 14px;
+  background: rgba(185,28,28,0.08);
+  border: 1px solid rgba(185,28,28,0.2);
+  border-radius: 8px; line-height: 1.5;
+}
+
+.sec-field { margin-bottom: 4px; }
+
+.sec-label {
+  display: block; font-size: 0.78rem; font-weight: 500;
+  color: rgba(245,241,232,0.6); margin-bottom: 6px;
+}
+
+.sec-label--danger { color: #e05c52; }
+
+.sec-hint {
+  display: block; font-size: 0.73rem;
+  color: rgba(245,241,232,0.32); margin-top: 5px;
+}
+
+.sec-hint--danger { color: rgba(224,92,82,0.65); }
+
+.sec-input--danger {
+  border-color: rgba(185,28,28,0.4) !important;
+}
+
+.sec-input--danger:focus {
+  border-color: #e05c52 !important;
+  box-shadow: 0 0 0 3px rgba(224,92,82,0.1) !important;
+}
+
+.sec-modal-actions {
+  display: flex; gap: 10px; flex-wrap: wrap;
+}
+
+.sec-modal-actions .btn-outline { flex: 1; justify-content: center; }
+
+.sec-btn--danger-solid {
+  background: #b91c1c; border: 1px solid #b91c1c;
+  color: #fff; padding: 9px 18px; border-radius: 8px;
+  font-size: 0.85rem; font-weight: 600; cursor: pointer;
+  display: inline-flex; align-items: center; gap: 8px;
+  transition: background 0.2s; flex: 1; justify-content: center;
+}
+
+.sec-btn--danger-solid:hover { background: #991b1b; }
+
+@media (max-width: 768px) {
+  .sett-page { padding: 32px 18px 60px; }
+  .sett-title { font-size: 1.8rem; }
+  .sett-row { padding: 16px 18px; }
+  .sett-divider { margin: 0 18px; }
+}
+
+@media (max-width: 480px) {
+  .sett-page { padding: 24px 14px 50px; }
+  .sett-title { font-size: 1.55rem; }
+  .sett-row { padding: 14px 12px; gap: 10px; }
+  .sett-row-left { gap: 12px; }
+  .sett-row-icon { width: 32px; height: 32px; font-size: 0.8rem; }
+  .sett-row-title { font-size: 0.86rem; }
+  .sett-row-desc { font-size: 0.72rem; }
+  .sett-divider { margin: 0 12px; }
+  .sec-modal { padding: 24px 18px; }
+  .sec-modal-actions { flex-direction: column; }
+}
+</style>
+
+<script>
+/* ── Preferences stored in localStorage ────────── */
+function savePref(key, value) {
+  const prefs = JSON.parse(localStorage.getItem('sv_prefs') || '{}');
+  prefs[key] = value;
+  localStorage.setItem('sv_prefs', JSON.stringify(prefs));
+}
+
+function loadPrefs() {
+  const prefs = JSON.parse(localStorage.getItem('sv_prefs') || '{}');
+
+  // Theme
+  const theme = prefs.theme || 'Dark';
+  document.getElementById('themeLabel').textContent = theme;
+
+  // Language
+  const lang = prefs.lang || 'English';
+  document.getElementById('langLabel').textContent = lang;
+
+  // Toggles
+  const ns = document.getElementById('notifSecurity');
+  const nd = document.getElementById('notifDocs');
+  if (ns) ns.checked = prefs.notifSecurity !== false;
+  if (nd) nd.checked = prefs.notifDocs !== false;
+}
+
+/* ── Theme cycle: Dark → Light → System ────────── */
+const THEMES = ['Dark', 'Light', 'System'];
+
+function cycleTheme() {
+  const prefs = JSON.parse(localStorage.getItem('sv_prefs') || '{}');
+  const cur = prefs.theme || 'Dark';
+  const next = THEMES[(THEMES.indexOf(cur) + 1) % THEMES.length];
+  savePref('theme', next);
+  document.getElementById('themeLabel').textContent = next;
+  // Animate the label
+  const el = document.getElementById('themeLabel');
+  el.style.transition = 'opacity 0.15s';
+  el.style.opacity = '0';
+  setTimeout(() => { el.textContent = next; el.style.opacity = '1'; }, 150);
+}
+
+/* ── Language picker (simple inline options) ─── */
+const LANGUAGES = ['English', 'Hindi', 'Spanish', 'French', 'German'];
+
+function openLanguage() {
+  const prefs = JSON.parse(localStorage.getItem('sv_prefs') || '{}');
+  const cur = prefs.lang || 'English';
+  const next = LANGUAGES[(LANGUAGES.indexOf(cur) + 1) % LANGUAGES.length];
+  savePref('lang', next);
+  const el = document.getElementById('langLabel');
+  el.style.opacity = '0';
+  setTimeout(() => { el.textContent = next; el.style.opacity = '1'; }, 150);
+}
+
+/* ── Delete modals ─────────────────────────────── */
+function openDeleteStep1() {
+  document.getElementById('deleteStep1').classList.remove('hidden');
+  document.body.style.overflow = 'hidden';
+}
+
+function openDeleteStep2() {
+  document.getElementById('deleteStep1').classList.add('hidden');
+  document.getElementById('deleteStep2').classList.remove('hidden');
+}
+
+function closeDeleteModals() {
+  document.getElementById('deleteStep1').classList.add('hidden');
+  document.getElementById('deleteStep2').classList.add('hidden');
+  document.body.style.overflow = '';
+  const txt = document.getElementById('deleteConfirmText');
+  if (txt) txt.value = '';
+}
+
+function validateDeleteForm() {
+  const txt = document.getElementById('deleteConfirmText');
+  if (!txt || txt.value.trim() !== 'DELETE') {
+    txt.style.borderColor = '#e05c52';
+    txt.focus();
+    return false;
+  }
+  setBtnLoading(document.getElementById('finalDeleteBtn'), 'Deleting...');
+  return true;
+}
+
+['deleteStep1', 'deleteStep2'].forEach(function(id) {
+  const el = document.getElementById(id);
+  if (el) el.addEventListener('click', function(e) {
+    if (e.target === this) closeDeleteModals();
+  });
+});
+
+// Init
+loadPrefs();
+</script>
+
+{% endblock %}

@@ -1,0 +1,144 @@
+{% extends "base.html" %}
+{% block title %}{{ vault.vault_name }} — SecureVault{% endblock %}
+{% block content %}
+<div class="wrap" style="padding-top: 1.5rem; padding-bottom: 3rem;">
+
+<div class="vault-header">
+  <div class="vault-header-left">
+    <div class="vault-avatar" style="background: linear-gradient(135deg, var(--primary), var(--secondary));"><i class="fas fa-folder-open"></i></div>
+    <div>
+      <h1>{{ vault.vault_name }}</h1>
+      <div class="vault-meta">
+        <span><i class="fas fa-file-lines"></i> {{ vault.documents|length }} document(s)</span>
+        <span><i class="fas fa-calendar"></i> Added {{ vault.created_at|friendly_date }}</span>
+        <span class="badge badge-blue"><i class="fas fa-globe"></i> Shared Folder</span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="search-bar">
+  <i class="fas fa-search"></i>
+  <input type="text" id="searchInput" placeholder="Search documents by name or type..." class="search-input"/>
+  <div class="filter-chips">
+    <button class="filter-chip active" data-filter="all">All</button>
+    <button class="filter-chip" data-filter="pdf">PDF</button>
+    <button class="filter-chip" data-filter="image">Images</button>
+  </div>
+</div>
+
+{% if vault.documents %}
+<div class="docs-grid" id="docsGrid">
+  {% for doc in vault.documents %}
+  <div class="doc-card" data-type="{{ doc.file_type }}" data-name="{{ doc.filename.lower() }}">
+    <div class="doc-card-preview">
+      {% if doc.file_type in ['jpg','jpeg','png'] %}
+        <div class="pdf-preview" style="background:#f1f5f9; color:var(--text-muted);">
+          <i class="fas fa-image" style="font-size:3rem; color:var(--primary);"></i>
+          <span style="font-size:0.9rem; margin-top:0.5rem; font-weight:600;">Image File</span>
+        </div>
+      {% else %}
+        <div class="pdf-preview">
+          <i class="fas fa-file-pdf"></i>
+          <span>PDF</span>
+        </div>
+      {% endif %}
+      <div class="doc-card-overlay">
+        <a href="{{ url_for('doc_gate', doc_id=doc.doc_id, action='view') }}"
+           class="overlay-btn" title="View">
+          <i class="fas fa-eye"></i>
+        </a>
+        <a href="{{ url_for('doc_gate', doc_id=doc.doc_id, action='download') }}"
+           class="overlay-btn" title="Download">
+          <i class="fas fa-download"></i>
+        </a>
+      </div>
+    </div>
+    <div class="doc-card-body">
+      <div class="doc-file-icon {{ doc.file_type }}">
+        <i class="fas fa-{% if doc.file_type == 'pdf' %}file-pdf{% else %}image{% endif %}"></i>
+      </div>
+      <div class="doc-details" style="flex:1;min-width:0; text-align:left;">
+        <span class="doc-filename" title="{{ doc.filename }}" style="font-weight:600; display:block; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">{{ doc.filename }}</span>
+        <div class="doc-card-meta" style="display:flex; align-items:center; gap:0.5rem; margin-top:0.25rem;">
+          <span class="badge badge-{{ 'red' if doc.file_type == 'pdf' else 'blue' }}">
+            {{ doc.file_type.upper() }}
+          </span>
+          <span style="font-size:.72rem;color:var(--text-muted);">{{ (doc.file_size / 1024)|round(1) }} KB</span>
+          <span class="badge badge-{% if doc.access_type == 'public' %}green{% else %}orange{% endif %}" style="font-size:0.65rem; padding:0.15rem 0.35rem; border-radius:4px;">
+            {% if doc.access_type == 'public' %}🔓 Anyone can view
+            {% elif doc.access_type == 'code' %}🔑 Access code required
+            {% elif doc.access_type == 'onetime' %}👁️ One-time view
+            {% elif doc.access_type == 'expiring' %}⏳ Expires on a timer
+            {% elif doc.access_type == 'limit' %}🚫 Limited views
+            {% endif %}
+          </span>
+        </div>
+      </div>
+    </div>
+    <div class="doc-card-footer" style="display:flex; gap:0.5rem; padding:0.75rem 1rem; border-top:1px solid var(--border-color);">
+      <a href="{{ url_for('doc_gate', doc_id=doc.doc_id, action='view') }}"
+         class="btn btn-sm btn-outline" style="flex:1; justify-content:center;">
+        <i class="fas fa-eye"></i> View
+      </a>
+      <a href="{{ url_for('doc_gate', doc_id=doc.doc_id, action='download') }}"
+         class="btn btn-sm btn-primary" style="flex:1; justify-content:center;">
+        <i class="fas fa-download"></i> Download
+      </a>
+    </div>
+  </div>
+  {% endfor %}
+</div>
+{% else %}
+<div class="empty-state">
+  <i class="fas fa-folder-open"></i>
+  <h3>No documents in this folder</h3>
+  <p>The owner hasn't added any documents to this folder yet.</p>
+</div>
+{% endif %}
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+document.addEventListener('DOMContentLoaded', () => {
+  const searchInput = document.getElementById('searchInput');
+  const filterChips = document.querySelectorAll('.filter-chip');
+  const docCards = document.querySelectorAll('.doc-card');
+
+  function filterDocs() {
+    const query = searchInput.value.toLowerCase().trim();
+    const activeFilter = document.querySelector('.filter-chip.active').dataset.filter;
+
+    docCards.forEach(card => {
+      const name = card.dataset.name;
+      const type = card.dataset.type;
+      const matchesSearch = name.includes(query);
+      
+      let matchesFilter = true;
+      if (activeFilter === 'pdf') matchesFilter = (type === 'pdf');
+      else if (activeFilter === 'image') matchesFilter = (type === 'jpg' || type === 'jpeg' || type === 'png');
+
+      if (matchesSearch && matchesFilter) {
+        card.style.display = '';
+      } else {
+        card.style.display = 'none';
+      }
+    });
+  }
+
+  if (searchInput) {
+    searchInput.addEventListener('input', filterDocs);
+  }
+
+  filterChips.forEach(chip => {
+    chip.addEventListener('click', () => {
+      filterChips.forEach(c => c.classList.remove('active'));
+      chip.classList.add('active');
+      filterDocs();
+    });
+  });
+});
+</script>
+{% endblock %}

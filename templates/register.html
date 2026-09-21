@@ -1,0 +1,108 @@
+{% extends "base.html" %}
+{% block title %}Register — SecureVault{% endblock %}
+{% block content %}
+<div class="gate-wrapper">
+  <div class="gate-card">
+    <div class="gate-icon"><i class="fas fa-user-plus"></i></div>
+    <h1>Create your vault</h1>
+    <p class="gate-sub">One account, one master password, as many sealed folders as you need.</p>
+
+    <form method="POST" class="gate-form" id="regForm" autocomplete="off">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <div class="form-group" style="text-align:left; margin-bottom:.85rem;">
+        <label class="form-label"><i class="fas fa-user"></i> Your name <span class="required">*</span></label>
+        <div class="gate-input-wrap">
+          <i class="fas fa-user gate-input-icon"></i>
+          <input type="text" name="name" placeholder="Your name" class="gate-input" autocomplete="name" required/>
+        </div>
+      </div>
+      <div class="form-group" style="text-align:left; margin-bottom:.85rem;">
+        <label class="form-label"><i class="fas fa-envelope"></i> Email address <span class="required">*</span></label>
+        <div class="gate-input-wrap">
+          <i class="fas fa-envelope gate-input-icon"></i>
+          <input type="email" name="email" placeholder="you@example.com" class="gate-input" required autofocus autocomplete="email"/>
+        </div>
+      </div>
+      <div class="form-group" style="text-align:left; margin-bottom:.85rem;">
+        <label class="form-label"><i class="fas fa-lock"></i> Password <span class="required">*</span></label>
+        <div class="gate-input-wrap">
+          <i class="fas fa-lock gate-input-icon"></i>
+          <input type="password" name="password" id="regPassword" placeholder="Min. 6 characters" class="gate-input" required autocomplete="new-password"/>
+          <button type="button" class="toggle-pw-gate" onclick="togglePw('regPassword')"><i class="fas fa-eye"></i></button>
+        </div>
+        <div class="strength-bar"><div id="strength-fill"></div></div>
+      </div>
+      <div class="form-group" style="text-align:left; margin-bottom:1.5rem;">
+        <label class="form-label"><i class="fas fa-lock-open"></i> Confirm password <span class="required">*</span></label>
+        <div class="gate-input-wrap">
+          <i class="fas fa-lock-open gate-input-icon"></i>
+          <input type="password" name="confirm_password" id="regConfirm" placeholder="Re-enter password" class="gate-input" required autocomplete="new-password"/>
+          <button type="button" class="toggle-pw-gate" onclick="togglePw('regConfirm')"><i class="fas fa-eye"></i></button>
+        </div>
+        <small class="hint" id="matchHint"></small>
+      </div>
+      <div class="terms-agree-row" style="margin-bottom: 1.25rem;">
+        <input type="checkbox" name="agree_terms" id="agreeTerms" required/>
+        <label for="agreeTerms">
+          I agree to SecureVault's
+          <a href="{{ url_for('terms_page') }}" target="_blank" rel="noopener">Terms of Service</a>
+          and
+          <a href="{{ url_for('privacy_page') }}" target="_blank" rel="noopener">Privacy Policy</a>.
+        </label>
+      </div>
+      <button type="submit" class="btn btn-primary btn-full btn-lg" id="regBtn">
+        <i class="fas fa-user-plus"></i> Create account
+      </button>
+    </form>
+
+    <div class="gate-divider"><span>Already have an account?</span></div>
+    <a href="{{ url_for('login') }}" class="btn btn-outline btn-full">
+      <i class="fas fa-right-to-bracket"></i> Log in
+    </a>
+  </div>
+</div>
+{% endblock %}
+{% block scripts %}
+<script>
+const pw = document.getElementById('regPassword');
+const cf = document.getElementById('regConfirm');
+const fill = document.getElementById('strength-fill');
+const hint = document.getElementById('matchHint');
+
+pw.addEventListener('input', () => {
+  const v = pw.value;
+  let score = 0;
+  if (v.length >= 6)  score++;
+  if (v.length >= 10) score++;
+  if (/[A-Z]/.test(v)) score++;
+  if (/[0-9]/.test(v)) score++;
+  if (/[^A-Za-z0-9]/.test(v)) score++;
+  const pct = ['0%','30%','50%','75%','100%'][score];
+  const cls = ['','strength-weak','strength-fair','strength-good','strength-strong'][score];
+  fill.style.width = pct;
+  fill.className = cls;
+});
+
+cf.addEventListener('input', () => {
+  if (cf.value && pw.value !== cf.value) {
+    hint.textContent = '⚠ Passwords do not match';
+    hint.style.color = 'var(--danger)';
+  } else if (cf.value) {
+    hint.textContent = '✓ Passwords match';
+    hint.style.color = 'var(--success)';
+  } else { hint.textContent = ''; }
+});
+
+document.getElementById('regForm').addEventListener('submit', function(e) {
+  if (pw.value !== cf.value) { e.preventDefault(); showToast('Passwords do not match','error'); return; }
+  const agree = document.getElementById('agreeTerms');
+  if (!agree.checked) {
+    e.preventDefault();
+    showToast('Please agree to the Terms of Service and Privacy Policy to continue.', 'error');
+    agree.focus();
+    return;
+  }
+  setBtnLoading(document.getElementById('regBtn'), 'Creating your account...');
+});
+</script>
+{% endblock %}

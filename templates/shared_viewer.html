@@ -1,0 +1,141 @@
+{% extends "base.html" %}
+{% block title %}{{ doc.filename }} — Secure Viewer — SecureVault{% endblock %}
+{% block content %}
+
+<style>
+  @media print {
+    body * { visibility: hidden !important; }
+    .no-print-overlay { visibility: visible !important; display: flex !important; }
+  }
+  .no-print-overlay {
+    display: none;
+  }
+  /* Disable right-click context menu suggestion via CSS feedback */
+  .secure-viewer-frame {
+    pointer-events: none;
+    user-select: none;
+    -webkit-user-select: none;
+  }
+  /* Allow scrolling but block interaction */
+  .secure-viewer-wrapper {
+    pointer-events: all;
+    overflow: auto;
+    position: relative;
+  }
+  .secure-viewer-wrapper img {
+    pointer-events: none;
+    user-select: none;
+    -webkit-user-select: none;
+  }
+</style>
+
+<!-- Print blocked overlay (only visible when printing) -->
+<div class="no-print-overlay" style="position:fixed; inset:0; background:rgba(0,0,0,0.95); z-index:99999; flex-direction:column; align-items:center; justify-content:center; color:#fff; text-align:center; padding:2rem;">
+  <i class="fas fa-ban" style="font-size:3rem; color:#ef4444; margin-bottom:1rem;"></i>
+  <h2 style="font-size:1.5rem; font-weight:700; margin-bottom:0.5rem;">Printing is Disabled</h2>
+  <p style="color:rgba(255,255,255,0.7); max-width:400px;">The owner of this shared file has disabled printing for this document.</p>
+</div>
+
+<div class="wrap" style="max-width: 960px; padding-top: 1.5rem; padding-bottom: 3rem;">
+  <!-- Viewer Header -->
+  <div style="display:flex; align-items:center; justify-content:space-between; gap:1rem; flex-wrap:wrap; margin-bottom:1.25rem; padding:1rem 1.25rem; background:var(--surface); border:1px solid var(--border); border-radius:var(--radius-lg); box-shadow:var(--shadow-card);">
+    <div style="display:flex; align-items:center; gap:0.75rem;">
+      <div style="width:38px; height:38px; border-radius:50%; background:var(--primary-light); color:var(--primary); display:flex; align-items:center; justify-content:center; font-size:1rem; flex-shrink:0;">
+        <i class="fas fa-{% if doc.file_type == 'pdf' %}file-pdf{% else %}image{% endif %}"></i>
+      </div>
+      <div>
+        <div style="font-weight:600; font-size:0.95rem; color:var(--text);">{{ doc.filename }}</div>
+        <div style="font-size:0.75rem; color:var(--text-muted);">
+          {{ doc.file_type.upper() }} ·
+          {% if link.allow_download %}
+            <span class="badge badge-green" style="font-size:0.7rem;">📥 Download Allowed</span>
+          {% else %}
+            <span class="badge badge-orange" style="font-size:0.7rem;">👁️ View Only</span>
+          {% endif %}
+          <span class="badge badge-orange" style="font-size:0.7rem; margin-left:0.25rem;">🚫 No Printing</span>
+        </div>
+      </div>
+    </div>
+    {% if link.allow_download %}
+    <a href="{{ url_for('serve_shared_file', share_id=share_id, doc_id=doc.doc_id, action='download') }}"
+       class="btn btn-primary btn-sm">
+      <i class="fas fa-download"></i> Download
+    </a>
+    {% endif %}
+  </div>
+
+  <!-- Secure File Viewer -->
+  <div class="secure-viewer-wrapper" style="background:var(--surface); border:1px solid var(--border); border-radius:var(--radius-lg); overflow:hidden; box-shadow:var(--shadow-md);" oncontextmenu="return false;">
+    {% if doc.file_type in ['jpg','jpeg','png'] %}
+      <!-- Image viewer -->
+      <div style="padding:1.5rem; display:flex; flex-direction:column; align-items:center; gap:1rem;">
+        <img src="{{ file_url }}" alt="{{ doc.filename }}" 
+             style="max-width:100%; max-height:80vh; object-fit:contain; border-radius:var(--radius-sm); display:block; user-select:none; -webkit-user-select:none; pointer-events:none;"
+             oncontextmenu="return false;"
+             draggable="false"/>
+      </div>
+    {% elif doc.file_type == 'pdf' %}
+      <!-- PDF viewer using iframe -->
+      <div style="position:relative;">
+        <iframe src="{{ file_url }}#toolbar=0&navpanes=0&scrollbar=1&view=FitH"
+                class="secure-viewer-frame"
+                style="width:100%; height:80vh; border:none; pointer-events:all;"
+                title="Secure PDF Viewer">
+          <p style="padding:2rem; text-align:center; color:var(--text-muted);">Your browser doesn't support inline PDF viewing. 
+            {% if link.allow_download %}
+              <a href="{{ url_for('serve_shared_file', share_id=share_id, doc_id=doc.doc_id, action='download') }}">Download PDF</a>
+            {% else %}
+              Please use a modern browser to view this PDF.
+            {% endif %}
+          </p>
+        </iframe>
+        <!-- Overlay to prevent right-click on pdf -->
+        <div style="position:absolute; inset:0; z-index:5; pointer-events:none;"></div>
+      </div>
+    {% else %}
+      <div style="padding:3rem; text-align:center; color:var(--text-muted);">
+        <i class="fas fa-file" style="font-size:2.5rem; margin-bottom:1rem; display:block;"></i>
+        <p>Preview not available for this file type.</p>
+        {% if link.allow_download %}
+          <a href="{{ url_for('serve_shared_file', share_id=share_id, doc_id=doc.doc_id, action='download') }}" class="btn btn-primary" style="margin-top:1rem;">
+            <i class="fas fa-download"></i> Download File
+          </a>
+        {% endif %}
+      </div>
+    {% endif %}
+  </div>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+// Disable keyboard shortcuts for printing
+document.addEventListener('keydown', function(e) {
+  // Block Ctrl+P / Cmd+P
+  if ((e.ctrlKey || e.metaKey) && e.key === 'p') {
+    e.preventDefault();
+    e.stopPropagation();
+    showToast('Printing is disabled for this shared file.', 'error');
+    return false;
+  }
+  // Block Ctrl+S / Cmd+S (save)
+  if ((e.ctrlKey || e.metaKey) && e.key === 's') {
+    e.preventDefault();
+    e.stopPropagation();
+    return false;
+  }
+});
+
+// Disable right-click context menu
+document.addEventListener('contextmenu', function(e) {
+  e.preventDefault();
+  return false;
+});
+
+window.addEventListener('beforeprint', function(e) {
+  e.preventDefault();
+  return false;
+});
+</script>
+{% endblock %}

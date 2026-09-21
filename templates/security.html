@@ -1,0 +1,705 @@
+{% extends "base.html" %}
+{% block title %}Security — SecureVault{% endblock %}
+{% block content %}
+
+<div class="sec-page">
+
+  <!-- ── Page Header ────────────────────────────── -->
+  <div class="sec-hero">
+    <div class="sec-hero-icon">
+      <i class="fas fa-shield-halved"></i>
+    </div>
+    <div class="sec-hero-text">
+      <h1>Security Center</h1>
+      <p>Manage credentials, protection layers, and account safety.</p>
+    </div>
+  </div>
+
+  <div class="sec-grid">
+
+    <!-- ── Left column ── -->
+    <div class="sec-col">
+
+      <!-- Account Password -->
+      <div class="sec-card">
+        <div class="sec-card-label"><i class="fas fa-shield-halved"></i> Account Access</div>
+        <h2 class="sec-card-title">Account Password</h2>
+        <p class="sec-card-desc">Controls your SecureVault login session. Keep it strong and unique.</p>
+        {% if user.auth_provider == 'google' and not user.password_hash %}
+        <div class="sec-info-block">
+          <i class="fab fa-google"></i>
+          <div>
+            <strong>Signed in with Google</strong>
+            <p>Your account uses Google Identity for sign-on. Password changes are managed in your Google Account settings.</p>
+          </div>
+        </div>
+        {% else %}
+        <form action="{{ url_for('update_account_password') }}" method="POST"
+              onsubmit="setBtnLoading(this.querySelector('button[type=submit]'), 'Updating...')">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <div class="sec-field">
+            <label class="sec-label">Current Password</label>
+            <div class="gate-input-wrap">
+              <i class="fas fa-lock gate-input-icon"></i>
+              <input type="password" name="current_password" id="curAccPw"
+                     placeholder="Enter current password" class="gate-input" required/>
+              <button type="button" class="toggle-pw-gate" onclick="togglePw('curAccPw')"><i class="fas fa-eye"></i></button>
+            </div>
+          </div>
+          <div class="sec-field">
+            <label class="sec-label">New Password</label>
+            <div class="gate-input-wrap">
+              <i class="fas fa-key gate-input-icon"></i>
+              <input type="password" name="new_password" id="newAccPw"
+                     placeholder="Minimum 6 characters" class="gate-input" required minlength="6"/>
+              <button type="button" class="toggle-pw-gate" onclick="togglePw('newAccPw')"><i class="fas fa-eye"></i></button>
+            </div>
+          </div>
+          <div class="sec-field">
+            <label class="sec-label">Confirm New Password</label>
+            <div class="gate-input-wrap">
+              <i class="fas fa-check-double gate-input-icon"></i>
+              <input type="password" name="confirm_password" id="cnfAccPw"
+                     placeholder="Repeat new password" class="gate-input" required minlength="6"/>
+              <button type="button" class="toggle-pw-gate" onclick="togglePw('cnfAccPw')"><i class="fas fa-eye"></i></button>
+            </div>
+          </div>
+          <button type="submit" class="btn btn-primary sec-btn">
+            <i class="fas fa-shield-halved"></i> Change Account Password
+          </button>
+        </form>
+        {% endif %}
+      </div>
+
+      <!-- Recent Login Activity -->
+      <div class="sec-card">
+        <div class="sec-card-label"><i class="fas fa-clock-rotate-left"></i> Session History</div>
+        <h2 class="sec-card-title">Recent Login Activity</h2>
+        <p class="sec-card-desc">Your last 5 sign-in events, with time and IP.</p>
+        {% if login_activity %}
+        <div class="sec-login-list">
+          {% for ev in login_activity %}
+          <div class="sec-login-row">
+            <div class="sec-login-icon {% if ev.event_type in ('login_failed', 'login_failed_google') %}sec-login-icon--fail{% elif ev.event_type == 'logout' %}sec-login-icon--neutral{% else %}sec-login-icon--ok{% endif %}">
+              <i class="fas {% if ev.event_type in ('login_failed', 'login_failed_google') %}fa-triangle-exclamation{% elif ev.event_type == 'logout' %}fa-arrow-right-from-bracket{% else %}fa-check{% endif %}"></i>
+            </div>
+            <div class="sec-login-info">
+              <div class="sec-login-title">
+                {% if ev.event_type == 'login_success' %}Signed in
+                {% elif ev.event_type == 'login_success_google' %}Signed in with Google
+                {% elif ev.event_type == 'login_failed' %}Failed sign-in attempt
+                {% elif ev.event_type == 'login_failed_google' %}Failed Google sign-in
+                {% elif ev.event_type == 'logout' %}Signed out
+                {% else %}{{ ev.event_type }}
+                {% endif %}
+              </div>
+              <div class="sec-login-meta">{{ ev.created_at|friendly_date }} · {{ ev.ip_address or 'Unknown IP' }}</div>
+            </div>
+          </div>
+          {% endfor %}
+        </div>
+        <a href="{{ url_for('activity_page', tab='audit', type='auth') }}" class="sec-view-all">
+          View full login history <i class="fas fa-arrow-right"></i>
+        </a>
+        {% else %}
+        <p class="sec-card-desc" style="margin:0;">No login activity recorded yet.</p>
+        {% endif %}
+      </div>
+
+    </div>
+
+    <!-- ── Right column ── -->
+    <div class="sec-col">
+
+      <!-- Built-in Safeguards -->
+      <div class="sec-card">
+        <div class="sec-card-label"><i class="fas fa-circle-check"></i> Always Active</div>
+        <h2 class="sec-card-title">Built-in Safeguards</h2>
+        <p class="sec-card-desc">These protections run at all times — no configuration needed.</p>
+        <div class="sec-safeguards">
+          <div class="sec-safeguard-row">
+            <div class="sec-safeguard-icon"><i class="fas fa-lock"></i></div>
+            <div>
+              <div class="sec-safeguard-title">Encrypted at Rest</div>
+              <div class="sec-safeguard-desc">Files are encrypted with strong stream ciphers before hitting disk.</div>
+            </div>
+          </div>
+          <div class="sec-safeguard-row">
+            <div class="sec-safeguard-icon"><i class="fas fa-hashtag"></i></div>
+            <div>
+              <div class="sec-safeguard-title">bcrypt Password Hashing</div>
+              <div class="sec-safeguard-desc">All passwords and access codes are salted and hashed with bcrypt.</div>
+            </div>
+          </div>
+          <div class="sec-safeguard-row">
+            <div class="sec-safeguard-icon"><i class="fas fa-fingerprint"></i></div>
+            <div>
+              <div class="sec-safeguard-title">Anti-CSRF &amp; Rate Limiting</div>
+              <div class="sec-safeguard-desc">Every mutating request is tokenized; brute-force attempts are throttled.</div>
+            </div>
+          </div>
+          <div class="sec-safeguard-row">
+            <div class="sec-safeguard-icon"><i class="fas fa-link-slash"></i></div>
+            <div>
+              <div class="sec-safeguard-title">Expiring Share Links</div>
+              <div class="sec-safeguard-desc">Shared document links expire automatically on your configured schedule.</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Download My Data -->
+      <div class="sec-card">
+        <div class="sec-card-label"><i class="fas fa-file-export"></i> Your Data</div>
+        <h2 class="sec-card-title">Download My Data</h2>
+        <p class="sec-card-desc">Export every document, vault, and your account &amp; login history as a single .zip file.</p>
+        <form action="{{ url_for('export_my_data') }}" method="POST"
+              onsubmit="setBtnLoading(this.querySelector('button[type=submit]'), 'Preparing export...')">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <button type="submit" class="btn btn-outline sec-btn">
+            <i class="fas fa-download"></i> Download My Data
+          </button>
+        </form>
+      </div>
+
+      <!-- Delete Account trigger -->
+      <div class="sec-card sec-card--danger">
+        <div class="sec-card-label sec-card-label--danger">
+          <i class="fas fa-triangle-exclamation"></i> Danger Zone
+        </div>
+        <h2 class="sec-card-title sec-card-title--danger">Delete Account</h2>
+        <p class="sec-card-desc">Once deleted, your account and all data are gone forever. Read the consequences before proceeding.</p>
+        <button type="button" class="btn sec-btn sec-btn--danger" onclick="openDeleteStep1()">
+          <i class="fas fa-trash-can"></i> Delete My Account
+        </button>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<!-- ── Step 1: Consequences Modal ─────────────────────── -->
+<div class="sec-modal-overlay hidden" id="deleteStep1">
+  <div class="sec-modal">
+    <div class="sec-modal-icon sec-modal-icon--warn">
+      <i class="fas fa-triangle-exclamation"></i>
+    </div>
+    <h2 class="sec-modal-title">Before you delete your account</h2>
+    <p class="sec-modal-sub">This action is <strong>permanent and irreversible.</strong> The following will be erased immediately:</p>
+    <ul class="sec-consequence-list">
+      <li><i class="fas fa-user-slash"></i> Your SecureVault account and login credentials</li>
+      <li><i class="fas fa-folder-open"></i> All folders and every document stored inside them</li>
+      <li><i class="fas fa-link-slash"></i> All share links you have created (recipients lose access)</li>
+      <li><i class="fas fa-clock-rotate-left"></i> Your full activity and audit log history</li>
+      <li><i class="fas fa-robot"></i> All Vault AI knowledge built from your documents</li>
+    </ul>
+    <p class="sec-modal-warn">There is <strong>no backup, no grace period, and no undo.</strong></p>
+    <div class="sec-modal-actions">
+      <button type="button" class="btn btn-outline" onclick="closeDeleteModals()">
+        <i class="fas fa-xmark"></i> Cancel — Keep My Account
+      </button>
+      <button type="button" class="btn sec-btn--danger-solid" onclick="openDeleteStep2()">
+        I understand, continue
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- ── Step 2: Confirm with DELETE + password ─────────── -->
+<div class="sec-modal-overlay hidden" id="deleteStep2">
+  <div class="sec-modal">
+    <div class="sec-modal-icon sec-modal-icon--red">
+      <i class="fas fa-skull-crossbones"></i>
+    </div>
+    <h2 class="sec-modal-title">Final confirmation</h2>
+    <p class="sec-modal-sub">Type <strong>DELETE</strong> in the box below to permanently erase your account.</p>
+
+    <form action="{{ url_for('delete_account') }}" method="POST" id="deleteAccountForm"
+          onsubmit="return validateDeleteForm()">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <div class="sec-field">
+        <label class="sec-label sec-label--danger">Type DELETE to confirm</label>
+        <input type="text" name="confirm_text" id="deleteConfirmText"
+               placeholder="DELETE" class="gate-input sec-input--danger"
+               autocomplete="off" required/>
+        <small class="sec-hint sec-hint--danger">Must be typed exactly as shown — case sensitive.</small>
+      </div>
+      {% if user.password_hash %}
+      <div class="sec-field">
+        <label class="sec-label">Your account password</label>
+        <div class="gate-input-wrap">
+          <i class="fas fa-lock gate-input-icon"></i>
+          <input type="password" name="password" id="deleteAccPw"
+                 placeholder="Enter your password" class="gate-input" required/>
+          <button type="button" class="toggle-pw-gate" onclick="togglePw('deleteAccPw')">
+            <i class="fas fa-eye"></i>
+          </button>
+        </div>
+      </div>
+      {% endif %}
+      <div class="sec-modal-actions" style="margin-top:20px;">
+        <button type="button" class="btn btn-outline" onclick="closeDeleteModals()">
+          <i class="fas fa-xmark"></i> Cancel
+        </button>
+        <button type="submit" class="btn sec-btn--danger-solid" id="finalDeleteBtn">
+          <i class="fas fa-trash-can"></i> Permanently Delete Account
+        </button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<style>
+/* ── Security page: force dark background ─────────── */
+body:has(.sec-page) {
+  background: var(--navy-950, #080e16);
+}
+
+.sec-page {
+  max-width: 1080px;
+  margin: 0 auto;
+  padding: 48px 28px 80px;
+  min-height: calc(100vh - 120px);
+}
+
+/* Hero */
+.sec-hero {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  margin-bottom: 40px;
+}
+
+.sec-hero-icon {
+  width: 56px;
+  height: 56px;
+  border-radius: 14px;
+  background: rgba(169, 130, 47, 0.1);
+  border: 1px solid rgba(169, 130, 47, 0.25);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.5rem;
+  color: var(--brass);
+  flex-shrink: 0;
+}
+
+.sec-hero-text h1 {
+  font-size: 1.85rem;
+  font-family: var(--font-display);
+  font-weight: 600;
+  color: var(--paper);
+  margin: 0 0 4px;
+  letter-spacing: -0.02em;
+}
+
+.sec-hero-text p {
+  margin: 0;
+  color: rgba(245, 241, 232, 0.45);
+  font-size: 0.9rem;
+}
+
+/* Grid */
+.sec-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 20px;
+  align-items: start;
+}
+
+.sec-col {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+/* Card */
+.sec-card {
+  background: rgba(15, 24, 36, 0.9);
+  border: 1px solid rgba(245, 241, 232, 0.07);
+  border-radius: 14px;
+  padding: 24px;
+}
+
+.sec-card--danger {
+  border-color: rgba(185, 28, 28, 0.25);
+  background: rgba(120, 20, 20, 0.06);
+}
+
+.sec-card-label {
+  font-size: 0.7rem;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--brass);
+  margin-bottom: 8px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.sec-card-label--danger { color: #e05c52; }
+
+.sec-card-title {
+  font-size: 1.05rem;
+  font-family: var(--font-display);
+  font-weight: 600;
+  color: var(--paper);
+  margin: 0 0 5px;
+}
+
+.sec-card-title--danger { color: #e05c52; }
+
+.sec-card-desc {
+  font-size: 0.82rem;
+  color: rgba(245, 241, 232, 0.42);
+  margin: 0 0 20px;
+  line-height: 1.55;
+}
+
+/* Fields */
+.sec-field { margin-bottom: 13px; }
+
+.sec-label {
+  display: block;
+  font-size: 0.79rem;
+  font-weight: 500;
+  color: rgba(245, 241, 232, 0.6);
+  margin-bottom: 6px;
+}
+
+.sec-label--danger { color: #e05c52; }
+
+.sec-hint {
+  display: block;
+  font-size: 0.74rem;
+  color: rgba(245, 241, 232, 0.32);
+  margin-top: 5px;
+  line-height: 1.5;
+}
+
+.sec-hint--danger { color: rgba(224, 92, 82, 0.7); }
+
+.sec-btn { width: 100%; justify-content: center; margin-top: 4px; }
+
+.sec-btn--danger {
+  width: 100%;
+  justify-content: center;
+  background: transparent;
+  border: 1px solid rgba(185, 28, 28, 0.5);
+  color: #e05c52;
+  padding: 9px 18px;
+  border-radius: 8px;
+  font-size: 0.86rem;
+  font-weight: 500;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  transition: background 0.2s, border-color 0.2s;
+}
+
+.sec-btn--danger:hover {
+  background: rgba(185, 28, 28, 0.12);
+  border-color: rgba(185, 28, 28, 0.7);
+}
+
+.sec-btn--danger-solid {
+  background: #b91c1c;
+  border: 1px solid #b91c1c;
+  color: #fff;
+  padding: 9px 18px;
+  border-radius: 8px;
+  font-size: 0.86rem;
+  font-weight: 600;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  transition: background 0.2s;
+}
+
+.sec-btn--danger-solid:hover { background: #991b1b; }
+
+/* Info block (Google) */
+.sec-info-block {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  background: rgba(245, 241, 232, 0.04);
+  border: 1px solid rgba(245, 241, 232, 0.07);
+  border-radius: 10px;
+  padding: 14px;
+}
+
+.sec-info-block i { color: var(--brass); font-size: 1rem; margin-top: 2px; flex-shrink: 0; }
+.sec-info-block strong { display: block; font-size: 0.86rem; color: var(--paper); margin-bottom: 4px; }
+.sec-info-block p { font-size: 0.79rem; color: rgba(245, 241, 232, 0.45); margin: 0; line-height: 1.5; }
+
+/* Safeguards */
+.sec-safeguards { display: flex; flex-direction: column; }
+
+.sec-safeguard-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 13px;
+  padding: 13px 0;
+  border-bottom: 1px solid rgba(245, 241, 232, 0.05);
+}
+
+.sec-safeguard-row:last-child { border-bottom: none; padding-bottom: 0; }
+
+.sec-safeguard-icon {
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  background: rgba(169, 130, 47, 0.1);
+  border: 1px solid rgba(169, 130, 47, 0.18);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.78rem;
+  color: var(--brass);
+  flex-shrink: 0;
+}
+
+.sec-safeguard-title { font-size: 0.84rem; font-weight: 600; color: var(--paper); margin-bottom: 2px; }
+.sec-safeguard-desc { font-size: 0.76rem; color: rgba(245, 241, 232, 0.38); line-height: 1.5; }
+
+/* Login activity */
+.sec-login-list { display: flex; flex-direction: column; }
+
+.sec-login-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 13px;
+  padding: 11px 0;
+  border-bottom: 1px solid rgba(245, 241, 232, 0.05);
+}
+
+.sec-login-row:last-child { border-bottom: none; padding-bottom: 0; }
+
+.sec-login-icon {
+  width: 30px;
+  height: 30px;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.74rem;
+  flex-shrink: 0;
+}
+
+.sec-login-icon--ok {
+  background: rgba(34, 150, 90, 0.12);
+  border: 1px solid rgba(34, 150, 90, 0.25);
+  color: #3fbd7f;
+}
+
+.sec-login-icon--fail {
+  background: rgba(185, 28, 28, 0.12);
+  border: 1px solid rgba(185, 28, 28, 0.25);
+  color: #e05c52;
+}
+
+.sec-login-icon--neutral {
+  background: rgba(245, 241, 232, 0.06);
+  border: 1px solid rgba(245, 241, 232, 0.12);
+  color: rgba(245, 241, 232, 0.55);
+}
+
+.sec-login-info { min-width: 0; }
+.sec-login-title { font-size: 0.84rem; font-weight: 600; color: var(--paper); margin-bottom: 2px; }
+.sec-login-meta { font-size: 0.76rem; color: rgba(245, 241, 232, 0.38); word-break: break-word; }
+
+.sec-view-all {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 14px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--brass);
+  text-decoration: none;
+}
+
+.sec-view-all i { font-size: 0.7rem; transition: transform 0.15s; }
+.sec-view-all:hover i { transform: translateX(3px); }
+
+/* ── Delete modals ─────────────────────────────── */
+.sec-modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(4, 8, 14, 0.85);
+  backdrop-filter: blur(6px);
+  z-index: 500;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+}
+
+.sec-modal-overlay.hidden { display: none; }
+
+.sec-modal {
+  background: #0d1520;
+  border: 1px solid rgba(245, 241, 232, 0.1);
+  border-radius: 18px;
+  padding: 36px 32px;
+  max-width: 500px;
+  width: 100%;
+  box-shadow: 0 32px 72px -12px rgba(0, 0, 0, 0.8);
+  animation: sec-modal-in 0.22s ease;
+}
+
+@keyframes sec-modal-in {
+  from { opacity: 0; transform: scale(0.95) translateY(8px); }
+  to   { opacity: 1; transform: scale(1) translateY(0); }
+}
+
+.sec-modal-icon {
+  width: 56px;
+  height: 56px;
+  border-radius: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.4rem;
+  margin-bottom: 20px;
+}
+
+.sec-modal-icon--warn {
+  background: rgba(202, 138, 4, 0.12);
+  border: 1px solid rgba(202, 138, 4, 0.28);
+  color: #ca8a04;
+}
+
+.sec-modal-icon--red {
+  background: rgba(185, 28, 28, 0.12);
+  border: 1px solid rgba(185, 28, 28, 0.28);
+  color: #e05c52;
+}
+
+.sec-modal-title {
+  font-family: var(--font-display);
+  font-size: 1.25rem;
+  font-weight: 600;
+  color: var(--paper);
+  margin: 0 0 8px;
+}
+
+.sec-modal-sub {
+  font-size: 0.85rem;
+  color: rgba(245, 241, 232, 0.55);
+  margin: 0 0 20px;
+  line-height: 1.55;
+}
+
+/* Consequence list */
+.sec-consequence-list {
+  list-style: none;
+  padding: 0;
+  margin: 0 0 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+}
+
+.sec-consequence-list li {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  font-size: 0.83rem;
+  color: rgba(245, 241, 232, 0.7);
+  line-height: 1.45;
+}
+
+.sec-consequence-list i {
+  color: #e05c52;
+  font-size: 0.78rem;
+  margin-top: 3px;
+  flex-shrink: 0;
+  width: 14px;
+}
+
+.sec-modal-warn {
+  font-size: 0.83rem;
+  color: #e05c52;
+  margin: 0 0 24px;
+  padding: 10px 14px;
+  background: rgba(185, 28, 28, 0.08);
+  border: 1px solid rgba(185, 28, 28, 0.2);
+  border-radius: 8px;
+  line-height: 1.5;
+}
+
+.sec-input--danger {
+  border-color: rgba(185, 28, 28, 0.4) !important;
+}
+
+.sec-input--danger:focus {
+  border-color: #e05c52 !important;
+  box-shadow: 0 0 0 3px rgba(224, 92, 82, 0.1) !important;
+}
+
+.sec-modal-actions {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.sec-modal-actions .btn-outline {
+  flex: 1;
+  justify-content: center;
+}
+
+/* Responsive */
+@media (max-width: 760px) {
+  .sec-grid { grid-template-columns: 1fr; }
+  .sec-page { padding: 28px 16px 60px; }
+  .sec-hero { gap: 14px; margin-bottom: 28px; }
+  .sec-hero-text h1 { font-size: 1.45rem; }
+  .sec-modal { padding: 28px 20px; }
+  .sec-modal-actions { flex-direction: column; }
+}
+</style>
+
+<script>
+function openDeleteStep1() {
+  document.getElementById('deleteStep1').classList.remove('hidden');
+  document.body.style.overflow = 'hidden';
+}
+
+function openDeleteStep2() {
+  document.getElementById('deleteStep1').classList.add('hidden');
+  document.getElementById('deleteStep2').classList.remove('hidden');
+}
+
+function closeDeleteModals() {
+  document.getElementById('deleteStep1').classList.add('hidden');
+  document.getElementById('deleteStep2').classList.add('hidden');
+  document.body.style.overflow = '';
+  const txt = document.getElementById('deleteConfirmText');
+  if (txt) txt.value = '';
+}
+
+function validateDeleteForm() {
+  const txt = document.getElementById('deleteConfirmText');
+  if (!txt || txt.value.trim() !== 'DELETE') {
+    txt.style.borderColor = '#e05c52';
+    txt.focus();
+    return false;
+  }
+  setBtnLoading(document.getElementById('finalDeleteBtn'), 'Deleting...');
+  return true;
+}
+
+// Close on overlay click
+['deleteStep1', 'deleteStep2'].forEach(function(id) {
+  document.getElementById(id).addEventListener('click', function(e) {
+    if (e.target === this) closeDeleteModals();
+  });
+});
+</script>
+
+{% endblock %}

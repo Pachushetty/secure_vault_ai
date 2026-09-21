@@ -1,0 +1,118 @@
+{% extends "base.html" %}
+{% block title %}User Profile &amp; Settings — SecureVault{% endblock %}
+{% block content %}
+
+<div class="dash-header">
+  <div class="wrap">
+    <div>
+      <div class="dash-eyebrow"><i class="fas fa-user-circle"></i> Account Custody</div>
+      <h1>Profile &amp; Settings</h1>
+      <p>Manage your account identity, personal details, and storage overview.</p>
+    </div>
+  </div>
+</div>
+
+<div class="dash-body">
+  <div class="wrap">
+
+    <!-- Profile Overview Grid -->
+    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 24px; margin-bottom: 32px;">
+
+      <!-- User Identity Card -->
+      <div class="form-card">
+        <div class="form-card-header">
+          <div class="step-badge"><i class="fas fa-id-card"></i></div>
+          <div>
+            <h2>User Details</h2>
+            <p>Personal credentials associated with this account.</p>
+          </div>
+        </div>
+        <div class="form-body">
+          <form action="{{ url_for('profile_page') }}" method="POST"
+                onsubmit="setBtnLoading(this.querySelector('button[type=submit]'), 'Saving...')">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            
+            <div style="display: flex; align-items: center; gap: 16px; margin-bottom: 20px; padding: 12px; background: var(--surface2); border-radius: var(--radius-sm);">
+              {% if user.profile_picture %}
+                <img src="{{ user.profile_picture }}" alt="{{ user.name }}" style="width: 52px; height: 52px; border-radius: 50%; object-fit: cover; border: 2px solid var(--brass);"/>
+              {% else %}
+                <div style="width: 52px; height: 52px; border-radius: 50%; background: linear-gradient(135deg, var(--brass), #6b4e18); color: var(--paper); display: flex; align-items: center; justify-content: center; font-size: 1.3rem; font-weight: 600;">
+                  {{ (user.name or user.email)[:1]|upper }}
+                </div>
+              {% endif %}
+              <div>
+                <strong style="font-size: 1rem; color: var(--ink); display: block;">{{ user.name or 'Account Owner' }}</strong>
+                <span style="font-size: 0.8rem; color: var(--ink-soft); font-family: var(--font-mono);">{{ user.email }}</span>
+              </div>
+            </div>
+
+            <div class="form-group" style="margin-bottom: 1rem;">
+              <label class="form-label"><i class="fas fa-signature"></i> Full Name</label>
+              <input type="text" name="name" value="{{ user.name or '' }}" placeholder="Your Name" class="gate-input" required/>
+            </div>
+
+            <div class="form-group" style="margin-bottom: 1.25rem;">
+              <label class="form-label"><i class="fas fa-envelope"></i> Email Address</label>
+              <input type="email" value="{{ user.email }}" class="gate-input" disabled style="opacity: 0.75; cursor: not-allowed;"/>
+              <small class="hint">Primary identifier used for vault custody.</small>
+            </div>
+
+            <button type="submit" class="btn btn-primary">
+              <i class="fas fa-floppy-disk"></i> Update Profile
+            </button>
+          </form>
+        </div>
+      </div>
+
+      <!-- Account Summary & Storage Usage -->
+      <div class="form-card">
+        <div class="form-card-header">
+          <div class="step-badge"><i class="fas fa-server"></i></div>
+          <div>
+            <h2>Storage &amp; Custody</h2>
+            <p>Summary of data maintained under this account.</p>
+          </div>
+        </div>
+        <div class="form-body">
+          <div style="display: flex; flex-direction: column; gap: 14px; margin-bottom: 24px;">
+            <div style="display: flex; justify-content: space-between; padding: 10px 14px; background: var(--surface2); border-radius: var(--radius-sm);">
+              <span style="color: var(--ink-soft); font-size: 0.85rem;"><i class="fas fa-folder"></i> Folders</span>
+              <strong style="font-family: var(--font-mono); font-size: 0.9rem;">{{ vaults_count }}</strong>
+            </div>
+            <div style="display: flex; justify-content: space-between; padding: 10px 14px; background: var(--surface2); border-radius: var(--radius-sm);">
+              <span style="color: var(--ink-soft); font-size: 0.85rem;"><i class="fas fa-file"></i> Total Documents</span>
+              <strong style="font-family: var(--font-mono); font-size: 0.9rem;">{{ docs_count }}</strong>
+            </div>
+            <div style="display: flex; justify-content: space-between; padding: 10px 14px; background: var(--surface2); border-radius: var(--radius-sm);">
+              <span style="color: var(--ink-soft); font-size: 0.85rem;"><i class="fas fa-hard-drive"></i> Encrypted Storage</span>
+              <strong style="font-family: var(--font-mono); font-size: 0.9rem;">
+                {% if total_bytes > 1073741824 %}{{ (total_bytes / 1073741824)|round(2) }} GB
+                {% elif total_bytes > 1048576 %}{{ (total_bytes / 1048576)|round(1) }} MB
+                {% else %}{{ (total_bytes / 1024)|round(1) }} KB{% endif %}
+              </strong>
+            </div>
+            <div style="display: flex; justify-content: space-between; padding: 10px 14px; background: var(--surface2); border-radius: var(--radius-sm);">
+              <span style="color: var(--ink-soft); font-size: 0.85rem;"><i class="fas fa-shield"></i> Authentication</span>
+              <span class="badge {% if user.auth_provider == 'google' %}badge-blue{% else %}badge-gold{% endif %}">
+                {{ user.auth_provider|title }}
+              </span>
+            </div>
+          </div>
+
+          <div style="display: flex; gap: 10px;">
+            <a href="{{ url_for('security_page') }}" class="btn btn-outline" style="flex: 1; justify-content: center;">
+              <i class="fas fa-shield-halved"></i> Security Settings
+            </a>
+            <a href="{{ url_for('activity_page') }}" class="btn btn-outline" style="flex: 1; justify-content: center;">
+              <i class="fas fa-clock-rotate-left"></i> View Activity
+            </a>
+          </div>
+        </div>
+      </div>
+
+    </div>
+
+  </div>
+</div>
+
+{% endblock %}

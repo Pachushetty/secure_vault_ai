@@ -1,0 +1,166 @@
+{# ══════════════════════════════════════════════════════════
+   Share wizard — progressive, 3-step sharing flow.
+   Included from vault.html, which provides `vault_id` and the
+   existing multi-select checkboxes (.doc-select-checkbox /
+   .folder-select-checkbox) this wizard reads its selection from.
+   Posts to the existing /vault/<vault_id>/share JSON endpoint —
+   no backend changes needed for this component.
+   ══════════════════════════════════════════════════════════ #}
+<div class="share-modal-overlay hidden" id="shareWizard" onclick="if(event.target===this)closeShareWizard()">
+  <div class="share-modal" role="dialog" aria-modal="true" aria-labelledby="wizardTitle">
+    <div class="share-modal-header">
+      <button class="share-modal-close" onclick="closeShareWizard()" type="button" aria-label="Close">
+        <i class="fas fa-xmark"></i>
+      </button>
+      <div class="share-modal-icon-wrap"><i class="fas fa-share-nodes"></i></div>
+      <div class="share-modal-title" id="wizardTitle">Share this document</div>
+      <div class="share-modal-sub">Choose how you want to share it.</div>
+    </div>
+
+    <div class="wizard-progress" aria-hidden="true">
+      <div class="wizard-progress-step active" id="wizProgress1">
+        <span class="wizard-progress-dot">1</span> Method
+      </div>
+      <div class="wizard-progress-line"></div>
+      <div class="wizard-progress-step" id="wizProgress2">
+        <span class="wizard-progress-dot">2</span> Protect
+      </div>
+      <div class="wizard-progress-line"></div>
+      <div class="wizard-progress-step" id="wizProgress3">
+        <span class="wizard-progress-dot">3</span> Share
+      </div>
+    </div>
+
+    <form id="shareWizardForm" onsubmit="submitShareWizard(event)" class="share-modal-form">
+      <div class="share-modal-body">
+
+        <div class="wizard-selected-summary" id="wizardSelectedSummary">
+          <i class="fas fa-file-lines"></i>
+          <span id="wizardSelectedSummaryText"><strong>0</strong> item(s) selected</span>
+        </div>
+
+        <!-- STEP 1 — choose method -->
+        <div class="wizard-step-panel active" id="wizardStep1">
+          <div class="wizard-method-grid">
+            <button type="button" class="wizard-method-card selected" id="methodPublicCard" onclick="selectWizardMethod('public')">
+              <div class="wizard-method-icon"><i class="fas fa-link"></i></div>
+              <div class="wizard-method-text">
+                <strong>🔗 Anyone with the link</strong>
+                <span>Anyone who has the link can access the document.</span>
+              </div>
+              <div class="wizard-method-check"><i class="fas fa-check"></i></div>
+            </button>
+            <button type="button" class="wizard-method-card" id="methodPasswordCard" onclick="selectWizardMethod('password')">
+              <div class="wizard-method-icon"><i class="fas fa-lock"></i></div>
+              <div class="wizard-method-text">
+                <strong>🔐 Password protected</strong>
+                <span>Require a password before the document can be opened.</span>
+              </div>
+              <div class="wizard-method-check"><i class="fas fa-check"></i></div>
+            </button>
+          </div>
+        </div>
+
+        <!-- STEP 2 — protection settings -->
+        <div class="wizard-step-panel" id="wizardStep2">
+          <div class="share-field-group hidden" id="wizardPasswordGroup">
+            <label class="share-field-label" for="wizard_password"><i class="fas fa-lock"></i> Password</label>
+            <div class="share-pw-wrap">
+              <i class="fas fa-lock share-pw-icon"></i>
+              <input type="password" id="wizard_password" placeholder="Choose a password..." class="share-pw-input" />
+              <button type="button" class="share-pw-toggle" onclick="togglePw('wizard_password')"><i class="fas fa-eye"></i></button>
+            </div>
+          </div>
+
+          <div class="share-two-col">
+            <div class="share-field-group">
+              <label class="share-field-label" for="wizard_expiry_preset"><i class="fas fa-calendar-xmark"></i> Expiration</label>
+              <select id="wizard_expiry_preset" class="share-select" onchange="onWizardExpiryPresetChange()">
+                <option value="">Never expires</option>
+                <option value="1">1 day</option>
+                <option value="7" selected>7 days</option>
+                <option value="30">30 days</option>
+                <option value="custom">Custom date &amp; time…</option>
+              </select>
+              <input type="datetime-local" id="wizard_expiry_custom" class="share-date-input hidden" style="margin-top:.5rem;" />
+            </div>
+            <div class="share-field-group">
+              <label class="share-field-label" for="wizard_view_limit"><i class="fas fa-eye-slash"></i> Maximum views</label>
+              <input type="number" id="wizard_view_limit" placeholder="Unlimited" min="1" class="share-number-input" />
+            </div>
+          </div>
+
+          <button type="button" class="advanced-toggle" onclick="toggleWizardAdvanced()" aria-expanded="false">
+            <i class="fas fa-sliders"></i> Advanced options
+            <i class="fas fa-chevron-down chev"></i>
+          </button>
+          <div class="advanced-panel" id="wizardAdvancedPanel">
+            <div class="advanced-option-row">
+              <div class="advanced-option-text">
+                <strong>Allow downloading</strong>
+                <span>Let people save a copy of the document.</span>
+              </div>
+              <label class="switch">
+                <input type="checkbox" id="wizard_allow_download" checked />
+                <span class="switch-track"></span>
+              </label>
+            </div>
+            <div class="advanced-option-row">
+              <div class="advanced-option-text">
+                <strong>Allow printing</strong>
+                <span>Let people print the document.</span>
+              </div>
+              <label class="switch">
+                <input type="checkbox" id="wizard_allow_printing" checked />
+                <span class="switch-track"></span>
+              </label>
+            </div>
+          </div>
+        </div>
+
+        <!-- STEP 3 — result -->
+        <div class="wizard-step-panel" id="wizardStep3">
+          <div class="wizard-success-icon"><i class="fas fa-circle-check"></i></div>
+          <div class="wizard-success-title">Your document is ready to share 🎉</div>
+          <div class="wizard-success-sub">Anyone with this link can open it, based on the settings you chose.</div>
+
+          <div class="wizard-link-box">
+            <span id="wizardResultLink"></span>
+            <button type="button" class="btn btn-sm btn-ghost" onclick="copyWizardLink()" title="Copy link"><i class="fas fa-copy"></i></button>
+          </div>
+
+          <div class="wizard-action-row">
+            <button type="button" class="btn btn-outline" onclick="copyWizardLink()"><i class="fas fa-copy"></i> Copy Link</button>
+            <button type="button" class="btn btn-outline" id="wizardQrToggleBtn" onclick="toggleWizardQr()"><i class="fas fa-qrcode"></i> Show QR Code</button>
+            <button type="button" class="btn btn-primary" onclick="nativeShareWizard()"><i class="fas fa-share-nodes"></i> Share</button>
+          </div>
+
+          <div class="wizard-qr-panel" id="wizardQrPanel">
+            <img id="wizardResultQrImg" src="" alt="QR code that opens this shared document" />
+            <p style="font-size:.8rem; color:var(--text-muted); margin-bottom:.7rem;">Scan this QR code to open the document.</p>
+            <a class="btn btn-sm btn-outline" id="wizardDownloadQrBtn" href="" download>
+              <i class="fas fa-download"></i> Download QR Card
+            </a>
+          </div>
+
+          <div class="wizard-summary-list" id="wizardSummaryList"></div>
+        </div>
+
+      </div>
+
+      <div class="share-modal-footer" id="wizardFooterStep1">
+        <button type="button" class="btn-share-cancel" onclick="closeShareWizard()">Cancel</button>
+        <button type="button" class="btn-share-generate" onclick="wizardGoToStep(2)">Continue <i class="fas fa-arrow-right"></i></button>
+      </div>
+      <div class="share-modal-footer hidden" id="wizardFooterStep2">
+        <button type="button" class="btn-share-cancel" onclick="wizardGoToStep(1)"><i class="fas fa-arrow-left"></i> Back</button>
+        <button type="submit" class="btn-share-generate" id="wizardGenerateBtn">
+          <i class="fas fa-share-nodes"></i> Create Share Link
+        </button>
+      </div>
+      <div class="share-modal-footer hidden" id="wizardFooterStep3">
+        <button type="button" class="btn-share-cancel" onclick="closeShareWizard()">Done</button>
+      </div>
+    </form>
+  </div>
+</div>

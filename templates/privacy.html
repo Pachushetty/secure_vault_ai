@@ -1,0 +1,173 @@
+{% extends "base.html" %}
+{% block title %}Privacy Policy — SecureVault{% endblock %}
+{% block content %}
+
+<div class="dash-header">
+  <div class="wrap">
+    <div>
+      <div class="dash-eyebrow"><i class="fas fa-user-shield"></i> Legal</div>
+      <h1>Privacy Policy</h1>
+      <p>Last updated: {{ legal_updated_date }}</p>
+    </div>
+  </div>
+</div>
+
+<div class="dash-body">
+  <div class="wrap" style="max-width: 820px;">
+    <div class="form-card">
+      <div class="form-body legal-content">
+
+        <p>This Privacy Policy explains what information SecureVault collects, why, and how it is
+        used, stored, and shared, in connection with our document-vault and secure-sharing
+        Service. It should be read together with our <a href="{{ url_for('terms_page') }}">Terms
+        of Service</a>.</p>
+
+        <h2>1. Information We Collect</h2>
+
+        <h3>a) Account information</h3>
+        <ul>
+          <li>Name and email address, provided at registration or via Google Sign-In;</li>
+          <li>A securely hashed password (we never store your password in plain text) and,
+          separately, a hashed vault password used to protect your documents;</li>
+          <li>Profile picture, if you sign in with Google;</li>
+          <li>Email verification codes and password-reset codes, which are hashed and expire
+          automatically.</li>
+        </ul>
+
+        <h3>b) Documents and vault content</h3>
+        <ul>
+          <li>The files you upload — which may include sensitive identity documents (e.g.
+          Aadhaar, PAN, passport, driving licence), certificates, or medical records — together
+          with filenames, file type, size, and folder organization;</li>
+          <li>Where the Vault AI / search feature is used, extracted text and derived vector
+          embeddings of your documents, used to power search and question-answering within your
+          own vault.</li>
+        </ul>
+        <p>Documents you upload are personal — and in many cases sensitive — data. We treat them
+        accordingly: they are only shown to you, and to anyone you deliberately grant access to
+        through a share link or QR code you generate.</p>
+
+        <h3>c) Sharing and access data</h3>
+        <ul>
+          <li>Settings you choose for share links and QR codes: expiry date, view limit, download
+          and print permissions, and an optional link password;</li>
+          <li>Access logs for shared links — action type (view, download, scan, failed password
+          attempt), timestamp, IP address, and user-agent string of the visitor — so you can review
+          who accessed a shared document and when.</li>
+        </ul>
+
+        <h3>d) Account and security activity</h3>
+        <ul>
+          <li>An audit log of account-security events (e.g. login, password change, registration,
+          account deletion) including timestamp, IP address, and user-agent, used for security
+          monitoring and to power the Activity page you can view in your account.</li>
+        </ul>
+
+        <h3>e) Technical information</h3>
+        <ul>
+          <li>Standard web request metadata such as IP address, browser/user-agent, and
+          timestamps, collected automatically as part of operating the Service and enforcing rate
+          limits that protect accounts from abuse;</li>
+          <li>Session cookies required to keep you logged in and to protect forms against
+          cross-site request forgery (CSRF). We do not use advertising or cross-site tracking
+          cookies.</li>
+        </ul>
+
+        <h2>2. How We Use Your Information</h2>
+        <ul>
+          <li>To create and secure your account, and to verify your email address;</li>
+          <li>To store, display, organize, and let you download your documents;</li>
+          <li>To generate and operate share links and QR codes according to the settings you
+          choose, and to log access to them so you can monitor and revoke access;</li>
+          <li>To power the optional Vault AI search/question-answering feature over your own
+          documents;</li>
+          <li>To detect, investigate, and prevent fraud, unauthorized access, and abuse (for
+          example, rate-limiting login and sharing endpoints, and recording failed password
+          attempts on share links);</li>
+          <li>To send you account-related emails: email verification codes, password-reset codes,
+          and similar service notices. We do not send marketing email.</li>
+        </ul>
+
+        <h2>3. Third Parties We Use</h2>
+        <p>We do not sell your personal data. We rely on the following categories of third-party
+        service providers to operate SecureVault, each of which processes data only as needed to
+        provide their service to us:</p>
+        <ul>
+          <li><strong>Google Sign-In</strong> — if you choose to log in or register with Google,
+          Google verifies your identity and shares your email, name, and profile picture with us as
+          permitted by your Google account settings.</li>
+          <li><strong>Groq (AI provider)</strong> — if you use Vault AI, your question and relevant
+          excerpts of your document text are sent to Groq's API to generate a response. This only
+          happens when you actively use the AI feature.</li>
+          <li><strong>Email delivery (Gmail SMTP)</strong> — used to deliver verification codes and
+          password-reset codes to your email address.</li>
+          <li><strong>Database and hosting infrastructure</strong> — your account and document data
+          is stored in a PostgreSQL database operated on infrastructure we control or on a hosting
+          provider we have contracted with to run the Service.</li>
+        </ul>
+        <p>We do not share your documents or account data with any other third party for their own
+        marketing or advertising purposes.</p>
+
+        <h2>4. Sharing Documents With Others</h2>
+        <p>Anyone who has a share link or scans a QR code you generate — and, where set, enters the
+        correct link password — can view or download the shared document, subject to the
+        permissions and expiry you configured. This sharing is initiated by you; we do not share
+        your documents with anyone unless you create a link or QR code for that purpose. You can
+        stop sharing, delete, or regenerate a link at any time from your Shared Documents page or
+        Activity log, which immediately invalidates the previous link.</p>
+
+        <h2>5. Data Retention</h2>
+        <ul>
+          <li>Account, document, and sharing data is retained for as long as your account is
+          active.</li>
+          <li>Email verification codes and password-reset codes expire automatically (typically
+          within minutes) and are marked used after a successful or failed verification, as
+          applicable.</li>
+          <li>Share-access logs and account audit logs are retained to support the Activity page
+          and for security purposes, and are deleted when the related account is deleted.</li>
+          <li>If you delete your account, your vaults, documents, files, QR code images, share
+          links, and associated logs are permanently deleted. This action cannot be undone.</li>
+        </ul>
+
+        <h2>6. Security</h2>
+        <p>We use measures including password hashing (bcrypt/Werkzeug), hashed and time-limited
+        verification/reset codes, CSRF protection on state-changing requests, and rate limiting on
+        sensitive endpoints (login, registration, password reset, sharing actions). Where
+        configured by the operator, extracted document text used for AI search can additionally be
+        encrypted at rest. No system can be guaranteed 100% secure, and you should choose strong,
+        unique passwords for your account and vault.</p>
+
+        <h2>7. Your Choices and Rights</h2>
+        <ul>
+          <li>You can access, update, or delete your documents and vaults at any time from My
+          Vault.</li>
+          <li>You can view and revoke share links at any time from Shared Documents or the Activity
+          page.</li>
+          <li>You can review your account and share-access history from the Activity page.</li>
+          <li>You can delete your account and all associated data from Settings.</li>
+          <li>Depending on your location, you may have additional rights under applicable data
+          protection law (such as the right to access, correct, or export your personal data, or to
+          object to certain processing). Contact us using the details below to exercise these
+          rights.</li>
+        </ul>
+
+        <h2>8. Children's Privacy</h2>
+        <p>The Service is not directed to children, and we do not knowingly collect personal
+        information from children under the age of digital consent in their jurisdiction. If you
+        believe a child has provided us with personal information, please contact us so we can
+        delete it.</p>
+
+        <h2>9. Changes to This Policy</h2>
+        <p>We may update this Privacy Policy from time to time. If we make material changes, we
+        will update the "Last updated" date above and, where appropriate, provide additional notice
+        within the Service.</p>
+
+        <h2>10. Contact</h2>
+        <p>For privacy questions or to exercise your data rights, contact us using the address
+        published on this site's support or about page.</p>
+
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

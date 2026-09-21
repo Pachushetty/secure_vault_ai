@@ -1,0 +1,123 @@
+{# ══════════════════════════════════════════════════════════
+   Reusable UI components (Jinja macros)
+   These read module-scope globals (url_for, csrf_token) which
+   Flask registers on the Jinja environment, so no "with context"
+   import is required by callers.
+   ══════════════════════════════════════════════════════════ #}
+
+{# ── Document card — "what can I do here" first ──────────────
+   One primary action (Open) + a single ⋮ menu for everything
+   else, per the simplified document-card design. #}
+{% macro document_card(doc, vault_id, folder_name='') %}
+<div class="doc-card" data-type="{{ doc.file_type }}" data-name="{{ doc.filename.lower() }}">
+  <div class="select-checkbox-wrap">
+    <input type="checkbox" class="doc-select-checkbox"
+           data-doc-id="{{ doc.doc_id }}" data-folder="{{ folder_name }}"
+           onclick="event.stopPropagation(); updateSelectionCount();"
+           aria-label="Select {{ doc.filename }} for sharing" />
+  </div>
+
+  <div class="doc-card-preview" role="button" tabindex="0"
+       aria-label="Open {{ doc.filename }}"
+       data-view-url="{{ url_for('serve_file', vault_id=vault_id, doc_id=doc.doc_id) }}"
+       data-download-url="{{ url_for('download_file', vault_id=vault_id, doc_id=doc.doc_id) }}"
+       data-filename="{{ doc.filename }}"
+       data-filetype="{{ doc.file_type }}"
+       onclick="openPreviewModal(this.dataset.viewUrl, this.dataset.downloadUrl, this.dataset.filename, this.dataset.filetype)"
+       onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault(); this.click();}">
+    {% if doc.file_type in ['jpg','jpeg','png'] %}
+      <img src="{{ url_for('serve_file', vault_id=vault_id, doc_id=doc.doc_id) }}"
+           alt="" loading="lazy" class="preview-img"
+           onerror="this.parentElement.innerHTML='&lt;i class=&quot;fas fa-image doc-placeholder&quot;&gt;&lt;/i&gt;'"/>
+    {% else %}
+      <div class="pdf-preview">
+        <i class="fas fa-file-{% if doc.file_type == 'docx' %}word{% else %}pdf{% endif %}"></i>
+        <span>{{ doc.file_type.upper() }}</span>
+      </div>
+    {% endif %}
+  </div>
+
+  <div class="doc-card-body-v2">
+    <div class="doc-card-title-row">
+      <i class="fas fa-{% if doc.file_type == 'pdf' %}file-pdf{% elif doc.file_type == 'docx' %}file-word{% elif doc.file_type in ['jpg','jpeg','png'] %}image{% else %}file{% endif %}" aria-hidden="true"></i>
+      <span class="doc-filename" title="{{ doc.filename }}">{{ doc.filename }}</span>
+    </div>
+    <div class="doc-card-line2">
+      <span>{{ doc.file_type.upper() }}</span>
+      <span class="dot">·</span>
+      <span>{{ (doc.file_size / 1024)|round(1) }} KB</span>
+    </div>
+    <div class="doc-card-line2 doc-card-date">
+      <i class="fas fa-calendar" style="font-size:.65rem;" aria-hidden="true"></i>
+      Added {{ doc.upload_date|friendly_date }}
+    </div>
+  </div>
+
+  <div class="doc-card-footer-v2">
+    <button type="button" class="btn btn-sm btn-primary doc-card-open-btn"
+            data-view-url="{{ url_for('serve_file', vault_id=vault_id, doc_id=doc.doc_id) }}"
+            data-download-url="{{ url_for('download_file', vault_id=vault_id, doc_id=doc.doc_id) }}"
+            data-filename="{{ doc.filename }}"
+            data-filetype="{{ doc.file_type }}"
+            onclick="openPreviewModal(this.dataset.viewUrl, this.dataset.downloadUrl, this.dataset.filename, this.dataset.filetype)">
+      <i class="fas fa-folder-open"></i> Open
+    </button>
+    <div class="doc-menu-wrap">
+      <button type="button" class="doc-menu-btn" title="More actions" aria-haspopup="true" aria-expanded="false"
+              onclick="toggleDocMenu(event, 'menu-{{ doc.doc_id }}')">
+        <i class="fas fa-ellipsis-vertical"></i>
+        <span class="sr-only">More actions for {{ doc.filename }}</span>
+      </button>
+      <div class="doc-menu hidden" id="menu-{{ doc.doc_id }}" role="menu">
+        <button type="button" class="doc-menu-item" role="menuitem"
+                data-view-url="{{ url_for('serve_file', vault_id=vault_id, doc_id=doc.doc_id) }}"
+                data-download-url="{{ url_for('download_file', vault_id=vault_id, doc_id=doc.doc_id) }}"
+                data-filename="{{ doc.filename }}"
+                data-filetype="{{ doc.file_type }}"
+                onclick="closeAllDocMenus(); openPreviewModal(this.dataset.viewUrl, this.dataset.downloadUrl, this.dataset.filename, this.dataset.filetype)">
+          <i class="fas fa-eye"></i> Open
+        </button>
+        <a class="doc-menu-item" role="menuitem" href="{{ url_for('download_file', vault_id=vault_id, doc_id=doc.doc_id) }}">
+          <i class="fas fa-download"></i> Download
+        </a>
+        <button type="button" class="doc-menu-item" role="menuitem"
+                onclick="closeAllDocMenus(); shareSingleDoc('{{ doc.doc_id }}', '{{ folder_name }}', false)">
+          <i class="fas fa-link"></i> Share
+        </button>
+        <button type="button" class="doc-menu-item" role="menuitem"
+                onclick="closeAllDocMenus(); shareSingleDoc('{{ doc.doc_id }}', '{{ folder_name }}', true)">
+          <i class="fas fa-qrcode"></i> Share via QR Code
+        </button>
+
+        <div class="doc-menu-divider"></div>
+        <button type="button" class="doc-menu-item doc-menu-danger" role="menuitem"
+                onclick="closeAllDocMenus(); confirmDelete('{{ doc.filename }}', 'del-form-{{ doc.doc_id }}')">
+          <i class="fas fa-trash"></i> Delete
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+{% endmacro %}
+
+{# ── Empty state — friendly, always with a next step ────────── #}
+{% macro empty_state(icon, title, text='', action_label=None, action_url=None, action_onclick=None) %}
+<div class="empty-state">
+  <i class="fas fa-{{ icon }}" aria-hidden="true"></i>
+  <h3>{{ title }}</h3>
+  {% if text %}<p>{{ text }}</p>{% endif %}
+  {% if action_label and action_url %}
+    <a href="{{ action_url }}" class="btn btn-primary btn-lg">{{ action_label }}</a>
+  {% elif action_label and action_onclick %}
+    <button type="button" class="btn btn-primary btn-lg" onclick="{{ action_onclick }}">{{ action_label }}</button>
+  {% endif %}
+</div>
+{% endmacro %}
+
+{# ── Small empty state (used inside cards / lists) ───────────── #}
+{% macro empty_state_sm(icon, text) %}
+<div class="empty-state-sm">
+  <i class="fas fa-{{ icon }}" aria-hidden="true"></i>
+  <p>{{ text }}</p>
+</div>
+{% endmacro %}

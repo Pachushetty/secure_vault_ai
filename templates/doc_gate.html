@@ -1,0 +1,89 @@
+{% extends "base.html" %}
+{% block title %}Access Document — SecureVault{% endblock %}
+{% block content %}
+<div class="gate-wrapper">
+  <div class="gate-card" style="box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.1), 0 8px 10px -6px rgba(0, 0, 0, 0.1); border: 1px solid var(--border-color); border-radius: 16px; background: var(--card-bg);">
+    
+    {% if gate_type == 'code' %}
+      <div class="gate-icon" style="background:#fef3c7; color:#d97706;"><i class="fas fa-key"></i></div>
+      <h1 style="color:var(--text-main); font-size:1.5rem; margin-bottom:0.5rem;">Access Code Required</h1>
+      <p class="gate-sub" style="color:var(--text-muted); font-size:0.9rem; margin-bottom:1.5rem;">
+        Please enter the document-specific Access Code to view or download this document.
+      </p>
+      
+      <form method="POST" class="gate-form">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <input type="hidden" name="action" value="{{ action }}"/>
+        <div class="form-group" style="text-align:left; margin-bottom:1.5rem;">
+          <label class="form-label" style="font-weight:600;"><i class="fas fa-asterisk"></i> Access Code</label>
+          <div class="gate-input-wrap" style="position:relative; display:flex; align-items:center;">
+            <i class="fas fa-shield gate-input-icon" style="position:absolute; left:1rem; color:var(--text-muted);"></i>
+            <input type="text" name="code" placeholder="Enter access code" class="gate-input" required autofocus style="width:100%; padding:0.75rem 1rem 0.75rem 2.5rem; border-radius:8px; border:1px solid var(--border-color); background:var(--bg-main); color:var(--text-main);" />
+          </div>
+        </div>
+        <button type="submit" class="btn btn-primary btn-full btn-lg" style="width:100%; font-weight:600;">
+          <i class="fas fa-key"></i> Submit Code
+        </button>
+      </form>
+      
+    {% elif gate_type == 'onetime' %}
+      <div class="gate-icon" style="background:#fee2e2; color:#dc2626;"><i class="fas fa-circle-exclamation"></i></div>
+      <h1 style="color:var(--text-main); font-size:1.5rem; margin-bottom:0.5rem;">One-Time Document Access</h1>
+      <p class="gate-sub" style="color:var(--text-muted); font-size:0.95rem; margin-bottom:1.5rem; line-height:1.5;">
+        This document is set to <strong>one-time view</strong>. Once you click proceed, the document will open and this link will stop working <strong>permanently</strong>.
+      </p>
+      
+      <form method="POST" class="gate-form">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <input type="hidden" name="action" value="{{ action }}"/>
+        <button type="submit" class="btn btn-danger btn-full btn-lg" style="width:100%; font-weight:600; background:#dc2626; border-color:#dc2626;">
+          <i class="fas fa-eye"></i> Proceed to View Document
+        </button>
+      </form>
+    {% elif gate_type == 'share_password' %}
+      <div class="gate-icon" style="background:#e0f2fe; color:#0284c7;"><i class="fas fa-lock"></i></div>
+      <h1 style="color:var(--text-main); font-size:1.5rem; margin-bottom:0.5rem;">Password Protected Share</h1>
+      <p class="gate-sub" style="color:var(--text-muted); font-size:0.9rem; margin-bottom:1.5rem;">
+        This shared selection is password protected. Please enter the password to view.
+      </p>
+      
+      <form method="POST" action="{{ url_for('auth_shared_vault', share_id=share_id) }}" class="gate-form">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <div class="form-group" style="text-align:left; margin-bottom:1.5rem;">
+          <label class="form-label" style="font-weight:600;"><i class="fas fa-key"></i> Share Password</label>
+          <div class="gate-input-wrap" style="position:relative; display:flex; align-items:center;">
+            <i class="fas fa-lock gate-input-icon" style="position:absolute; left:1rem; color:var(--text-muted);"></i>
+            <input type="password" name="password" id="gateSharePw" placeholder="Enter share password" class="gate-input" required autofocus style="width:100%; padding:0.75rem 1rem 0.75rem 2.5rem; border-radius:8px; border:1px solid var(--border-color); background:var(--bg-main); color:var(--text-main);" />
+            <button type="button" class="toggle-pw-gate" onclick="togglePw('gateSharePw')" style="position:absolute; right:1rem; background:none; border:none; cursor:pointer; color:var(--text-muted);"><i class="fas fa-eye"></i></button>
+          </div>
+        </div>
+        <button type="submit" class="btn btn-primary" style="width:100%; font-weight:600; padding: 0.75rem 1rem; border-radius: 8px;">
+          <i class="fas fa-unlock"></i> Unlock Shared Selection
+        </button>
+      </form>
+    {% endif %}
+    
+    {% if doc.file_type is defined and doc.file_type %}
+    <div style="margin-top:1.5rem; padding-top:1.25rem; border-top:1px dashed var(--border-color); text-align:left;">
+      <h3 style="font-size:0.85rem; font-weight:600; color:var(--text-muted); margin-bottom:0.5rem;">Document Info</h3>
+      <div style="display:flex; align-items:center; gap:0.5rem; background:var(--bg-main); padding:0.5rem 0.75rem; border-radius:6px;">
+        <i class="fas fa-{% if doc.file_type == 'pdf' %}file-pdf{% else %}image{% endif %}" style="color:{% if doc.file_type == 'pdf' %}#dc2626{% else %}#2563eb{% endif %}; font-size:1.25rem;"></i>
+        <div style="flex:1; min-width:0;">
+          <div style="font-weight:600; font-size:0.85rem; color:var(--text-main); overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">{{ doc.filename }}</div>
+          <div style="font-size:0.75rem; color:var(--text-muted);">{{ doc.file_type.upper() }} · {{ (doc.file_size / 1024)|round(1) }} KB</div>
+        </div>
+      </div>
+    </div>
+    {% elif doc.filename %}
+    <div style="margin-top:1.5rem; padding-top:1.25rem; border-top:1px dashed var(--border-color); text-align:left;">
+      <h3 style="font-size:0.85rem; font-weight:600; color:var(--text-muted); margin-bottom:0.5rem;">Shared Selection</h3>
+      <div style="display:flex; align-items:center; gap:0.5rem; background:var(--bg-main); padding:0.5rem 0.75rem; border-radius:6px;">
+        <i class="fas fa-folder-open" style="color:#b0842e; font-size:1.25rem;"></i>
+        <div style="font-weight:600; font-size:0.85rem; color:var(--text-main); overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">{{ doc.filename }}</div>
+      </div>
+    </div>
+    {% endif %}
+    
+  </div>
+</div>
+{% endblock %}

@@ -1,0 +1,143 @@
+{% extends "base.html" %}
+{% block title %}Dashboard — SecureVault{% endblock %}
+{% block content %}
+
+{% set total_docs = namespace(val=0) %}
+{% for v in vaults %}{% set total_docs.val = total_docs.val + v.documents|length %}{% endfor %}
+
+{% set total_bytes = namespace(val=0) %}
+{% for v in vaults %}{% for doc in v.documents %}{% set total_bytes.val = total_bytes.val + doc.file_size %}{% endfor %}{% endfor %}
+{% set storage_kb = (total_bytes.val / 1024) | round(1) %}
+{% set storage_mb = (total_bytes.val / 1048576) | round(1) %}
+{% set storage_gb = (total_bytes.val / 1073741824) | round(2) %}
+
+{% set last_updated = namespace(val='') %}
+{% for v in vaults %}{% if v.updated_at > last_updated.val %}{% set last_updated.val = v.updated_at %}{% endif %}{% endfor %}
+
+<div class="dash-header">
+  <div class="wrap">
+    <div>
+      <div class="dash-eyebrow">Registry of record</div>
+      <h1>{{ user.name or user.email.split('@')[0] }}'s vault</h1>
+      <p>
+        {{ total_docs.val }} document{{ '' if total_docs.val == 1 else 's' }} across
+        {{ vaults|length }} folder{{ '' if vaults|length == 1 else 's' }}
+        {% if storage_gb >= 1 %}· {{ storage_gb }} GB stored
+        {% elif storage_mb >= 1 %}· {{ storage_mb }} MB stored
+        {% else %}· {{ storage_kb }} KB stored{% endif %}
+      </p>
+    </div>
+    <a href="{{ url_for('create_vault') }}" class="btn btn-primary btn-lg"><i class="fas fa-plus"></i> New folder</a>
+  </div>
+</div>
+
+<div class="dash-body">
+  <div class="wrap">
+
+    {% if vaults %}
+    <!-- Hidden delete forms (submitted via shared modal) -->
+    {% for vault in vaults %}
+    <form method="POST" action="{{ url_for('delete_vault', vault_id=vault.vault_id) }}"
+          id="del-vault-form-{{ vault.vault_id }}" style="display:none;">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"></form>
+    {% endfor %}
+
+    <div class="vault-grid">
+      {% for vault in vaults %}
+      {% set sizes = namespace(val=0) %}
+      {% for doc in vault.documents %}{% set sizes.val = sizes.val + doc.file_size %}{% endfor %}
+      <div class="vault-card">
+        <a href="{{ url_for('vault_view', vault_id=vault.vault_id) }}" style="text-decoration:none; color:inherit;">
+          <div class="vault-card__top">
+            <div>
+              <div class="vault-card__kicker">Folder · {{ vault.created_at|friendly_date }}</div>
+              <div class="vault-card__name">{{ vault.vault_name }}</div>
+            </div>
+            <div class="vault-card__seal"><i class="fas fa-lock"></i></div>
+          </div>
+        </a>
+        <div class="vault-card__body">
+          <div class="vault-card__row"><span>Documents</span><span>{{ vault.documents|length }}</span></div>
+          <div class="vault-card__row"><span>Size</span><span>{{ (sizes.val/1024)|round(1) }} KB</span></div>
+          <div class="vault-card__row"><span>Access</span><span>Owner only</span></div>
+        </div>
+        <div style="display:flex; gap:8px; padding: 0 22px 20px;">
+          <a href="{{ url_for('vault_view', vault_id=vault.vault_id) }}" class="btn btn-sm btn-primary" style="flex:1; justify-content:center;">
+            <i class="fas fa-folder-open"></i> Open
+          </a>
+
+          <button type="button" class="btn btn-sm btn-outline" title="Rename folder"
+                  data-vault-id="{{ vault.vault_id }}" data-vault-name="{{ vault.vault_name }}"
+                  onclick="openDashboardRenameModal(this.dataset.vaultId, this.dataset.vaultName)">
+            <i class="fas fa-pen"></i>
+          </button>
+
+          <button type="button" class="btn btn-sm btn-outline" title="Delete folder"
+                  onclick="confirmDelete('{{ vault.vault_name }}', 'del-vault-form-{{ vault.vault_id }}', 'vault')">
+            <i class="fas fa-trash"></i>
+          </button>
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+    {% else %}
+    <div class="empty-state">
+      <i class="fas fa-folder-open"></i>
+      <h3>No folders yet</h3>
+      <p>Create your first folder to start keeping documents sealed and organized.</p>
+      <a href="{{ url_for('create_vault') }}" class="btn btn-primary"><i class="fas fa-plus"></i> Create folder</a>
+    </div>
+    {% endif %}
+
+  </div>
+</div>
+
+{# ── Dashboard Rename Folder Modal ────────────────────────────────────────── #}
+<div class="modal-overlay hidden" id="dashRenameModal" onclick="if(event.target===this)closeDashRenameModal()">
+  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="dashRenameModalTitle">
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:1.15rem;">
+      <h3 id="dashRenameModalTitle" style="margin:0; font-size:1.15rem; font-weight:700;">Rename Folder</h3>
+      <button type="button" onclick="closeDashRenameModal()" title="Close" style="font-size:1.2rem; cursor:pointer; background:none; border:none; color:var(--ink-soft,#71717a); line-height:1;">&times;</button>
+    </div>
+    <form method="POST" action="" id="dashRenameForm">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <input type="hidden" name="next" value="{{ url_for('dashboard') }}">
+      <div style="margin-bottom:1.35rem;">
+        <label for="dashRenameInput" style="display:block; font-size:0.85rem; font-weight:600; color:var(--ink-soft,#71717a); margin-bottom:0.45rem;">Folder Name</label>
+        <input type="text" name="vault_name" id="dashRenameInput" class="form-control"
+               value="" required maxlength="60"
+               style="width:100%; box-sizing:border-box; padding:0.65rem 0.9rem; border-radius:8px; border:1px solid var(--border,#e0dad0); font-size:0.95rem;">
+      </div>
+      <div style="display:flex; justify-content:flex-end; gap:0.75rem;">
+        <button type="button" class="btn btn-outline" onclick="closeDashRenameModal()">Cancel</button>
+        <button type="submit" class="btn btn-primary"><i class="fas fa-check"></i> Save Changes</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<script>
+function openDashboardRenameModal(vaultId, currentName) {
+  const form = document.getElementById('dashRenameForm');
+  const input = document.getElementById('dashRenameInput');
+  const modal = document.getElementById('dashRenameModal');
+  if (form) form.action = '/vault/' + vaultId + '/rename-vault';
+  if (input) input.value = currentName;
+  if (modal) {
+    modal.classList.remove('hidden');
+    setTimeout(() => {
+      input.focus();
+      input.select();
+    }, 50);
+  }
+}
+function closeDashRenameModal() {
+  const modal = document.getElementById('dashRenameModal');
+  if (modal) modal.classList.add('hidden');
+}
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape') closeDashRenameModal();
+});
+</script>
+
+{% endblock %}

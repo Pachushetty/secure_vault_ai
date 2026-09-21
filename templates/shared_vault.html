@@ -1,0 +1,270 @@
+{% extends "base.html" %}
+{% block title %}{{ vault.vault_name }} — Shared — SecureVault{% endblock %}
+{% block content %}
+<div class="wrap" style="padding-top: 1.5rem; padding-bottom: 3rem;">
+
+<div class="vault-header" style="border: 1px solid var(--border); background: var(--surface); border-radius: var(--radius-lg); padding: 1.25rem 1.4rem; box-shadow: var(--shadow-card);">
+  <div class="vault-header-left" style="display:flex; align-items:center; gap:0.9rem;">
+    <div class="vault-avatar" style="background: linear-gradient(135deg, var(--primary), var(--secondary)); width: 42px; height: 42px; border-radius: 50%; display: flex; align-items: center; justify-content: center; color: #fff; font-size: 1.05rem; flex-shrink: 0;"><i class="fas fa-folder-open"></i></div>
+    <div>
+      <h1 style="font-size: 1.2rem; font-weight: 600; letter-spacing: -.02em;">{{ vault.vault_name }}</h1>
+      <div class="vault-meta" style="display: flex; align-items: center; gap: 0.9rem; flex-wrap: wrap; margin-top: 0.3rem; font-size: 0.78rem; color: var(--text-muted);">
+        <span><i class="fas fa-file-lines"></i> {{ vault.documents|length }} shared file(s)</span>
+        <span><i class="fas fa-calendar"></i> Shared on {{ link.created_at|friendly_date }}</span>
+        <span class="badge badge-blue"><i class="fas fa-share-nodes"></i> Secure Share Selection</span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="search-bar" style="display: flex; align-items: center; gap: 0.7rem; flex-wrap: wrap; padding: 0.7rem 0.9rem; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); margin: 1.25rem 0; box-shadow: var(--shadow-sm);">
+  <i class="fas fa-search"></i>
+  <input type="text" id="searchInput" placeholder="Search documents by name or type..." class="search-input" style="flex: 1; border: none; outline: none; background: transparent; font-family: var(--font); font-size: 0.87rem; color: var(--text); min-width: 160px;"/>
+  <div class="filter-chips" style="display: flex; gap: 0.35rem; flex-shrink: 0;">
+    <button class="filter-chip active" data-filter="all">All</button>
+    <button class="filter-chip" data-filter="pdf">PDF</button>
+    <button class="filter-chip" data-filter="image">Images</button>
+  </div>
+</div>
+
+{% if vault.documents %}
+<!-- Separate documents into ungrouped and folder-grouped -->
+{% set root_docs = [] %}
+{% set folders = {} %}
+{% for doc in vault.documents %}
+  {% if doc.folder_name %}
+    {% if doc.folder_name not in folders %}
+      {% if folders.update({doc.folder_name: [doc]}) %}{% endif %}
+    {% else %}
+      {% if folders[doc.folder_name].append(doc) %}{% endif %}
+    {% endif %}
+  {% else %}
+    {% if root_docs.append(doc) %}{% endif %}
+  {% endif %}
+{% endfor %}
+
+<div id="vault-items-container">
+  <!-- Render folders first -->
+  {% for folder_name, folder_docs in folders.items() %}
+  <div class="folder-group" style="margin-bottom: 1.5rem;" data-folder-name="{{ folder_name }}">
+    <div class="folder-header" style="display:flex; align-items:center; gap:0.75rem; padding:0.75rem 1rem; background:var(--surface2); border:1px solid var(--border); border-radius:var(--radius); cursor:pointer; transition:var(--transition);" onclick="toggleFolderCollapse('folder-{{ loop.index }}')">
+      <i class="fas fa-folder-open" style="color:var(--accent); font-size:1.2rem;"></i>
+      <span style="font-weight:600; flex:1; text-align:left;">{{ folder_name }}</span>
+      <span class="badge badge-blue" style="font-size:0.75rem;">{{ folder_docs|length }} file(s)</span>
+      <i class="fas fa-chevron-down folder-chevron" id="chevron-folder-{{ loop.index }}" style="transition: transform 0.2s;"></i>
+    </div>
+    
+    <div class="folder-body" id="folder-{{ loop.index }}" style="margin-top:0.75rem; padding:0 0.5rem;">
+      <div class="docs-grid" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); gap: 0.9rem;">
+        {% for doc in folder_docs %}
+        <div class="doc-card" data-type="{{ doc.file_type }}" data-name="{{ doc.filename.lower() }}" style="background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; box-shadow: var(--shadow-card); transition: var(--transition);">
+          <div class="doc-card-preview" style="height: 140px; background: var(--surface3); position: relative; overflow: hidden; display: flex; align-items: center; justify-content: center;">
+            {% if doc.file_type in ['jpg','jpeg','png'] %}
+              <div class="pdf-preview" style="background:#f1f5f9; color:var(--text-muted); display:flex; flex-direction:column; align-items:center; gap:0.4rem;">
+                <i class="fas fa-image" style="font-size:2.5rem; color:var(--primary);"></i>
+                <span style="font-size:0.8rem; font-weight:600;">Image File</span>
+              </div>
+            {% else %}
+              <div class="pdf-preview" style="display:flex; flex-direction:column; align-items:center; gap:0.4rem; color:#A6432D;">
+                <i class="fas fa-file-pdf" style="font-size:2.5rem;"></i>
+                <span style="font-size:0.8rem; font-weight:600;">PDF</span>
+              </div>
+            {% endif %}
+            <div class="doc-card-overlay" style="position: absolute; inset: 0; background: rgba(11,21,18,0.55); display: flex; align-items: center; justify-content: center; gap: 0.6rem; opacity: 0; transition: opacity 0.3s;">
+              <a href="{{ url_for('serve_shared_file', share_id=share_id, doc_id=doc.doc_id, action='view') }}"
+                 class="overlay-btn" title="View" style="width: 32px; height: 32px; border-radius: 50%; background: rgba(255,255,255,0.16); backdrop-filter: blur(6px); border: 1px solid rgba(255,255,255,0.35); color: #fff; display: flex; align-items: center; justify-content: center; transition: var(--transition);">
+                <i class="fas fa-eye"></i>
+              </a>
+              {% if link.allow_download %}
+              <a href="{{ url_for('serve_shared_file', share_id=share_id, doc_id=doc.doc_id, action='download') }}"
+                 class="overlay-btn" title="Download" style="width: 32px; height: 32px; border-radius: 50%; background: rgba(255,255,255,0.16); backdrop-filter: blur(6px); border: 1px solid rgba(255,255,255,0.35); color: #fff; display: flex; align-items: center; justify-content: center; transition: var(--transition);">
+                <i class="fas fa-download"></i>
+              </a>
+              {% endif %}
+            </div>
+          </div>
+          <div class="doc-card-body" style="display: flex; align-items: flex-start; gap: 0.65rem; padding: 0.8rem 0.8rem 0.45rem;">
+            <div class="doc-file-icon {{ doc.file_type }}">
+              <i class="fas fa-{% if doc.file_type == 'pdf' %}file-pdf{% else %}image{% endif %}"></i>
+            </div>
+            <div class="doc-details" style="flex:1;min-width:0; text-align:left;">
+              <span class="doc-filename" title="{{ doc.filename }}" style="font-weight:600; display:block; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">{{ doc.filename }}</span>
+              <div class="doc-card-meta">
+                <span class="badge badge-{{ 'red' if doc.file_type == 'pdf' else 'blue' }}">
+                  {{ doc.file_type.upper() }}
+                </span>
+                <span style="font-size:.72rem;color:var(--text-muted);">{{ (doc.file_size / 1024)|round(1) }} KB</span>
+              </div>
+            </div>
+          </div>
+          <div class="doc-card-footer" style="display:flex; gap:0.5rem; padding:0.7rem 0.8rem; border-top:1px solid var(--border); background:var(--surface2);">
+            <a href="{{ url_for('serve_shared_file', share_id=share_id, doc_id=doc.doc_id, action='view') }}"
+               class="btn btn-sm btn-outline" style="flex:1; justify-content:center;">
+              <i class="fas fa-eye"></i> View
+            </a>
+            {% if link.allow_download %}
+            <a href="{{ url_for('serve_shared_file', share_id=share_id, doc_id=doc.doc_id, action='download') }}"
+               class="btn btn-sm btn-primary" style="flex:1; justify-content:center;">
+              <i class="fas fa-download"></i> Download
+            </a>
+            {% endif %}
+          </div>
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+  </div>
+  {% endfor %}
+
+  <!-- Render Root Files -->
+  {% if root_docs %}
+  <div class="root-files-section" style="margin-top: 1.5rem;">
+    <h3 style="margin-bottom:0.75rem; font-size:1rem; font-weight:600; text-align:left; color:var(--text-muted);"><i class="fas fa-file"></i> Unsorted Documents</h3>
+    <div class="docs-grid" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); gap: 0.9rem;">
+      {% for doc in root_docs %}
+      <div class="doc-card" data-type="{{ doc.file_type }}" data-name="{{ doc.filename.lower() }}" style="background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; box-shadow: var(--shadow-card); transition: var(--transition);">
+        <div class="doc-card-preview" style="height: 140px; background: var(--surface3); position: relative; overflow: hidden; display: flex; align-items: center; justify-content: center;">
+          {% if doc.file_type in ['jpg','jpeg','png'] %}
+            <div class="pdf-preview" style="background:#f1f5f9; color:var(--text-muted); display:flex; flex-direction:column; align-items:center; gap:0.4rem;">
+              <i class="fas fa-image" style="font-size:2.5rem; color:var(--primary);"></i>
+              <span style="font-size:0.8rem; font-weight:600;">Image File</span>
+            </div>
+          {% else %}
+            <div class="pdf-preview" style="display:flex; flex-direction:column; align-items:center; gap:0.4rem; color:#A6432D;">
+              <i class="fas fa-file-pdf" style="font-size:2.5rem;"></i>
+              <span style="font-size:0.8rem; font-weight:600;">PDF</span>
+            </div>
+          {% endif %}
+          <div class="doc-card-overlay" style="position: absolute; inset: 0; background: rgba(11,21,18,0.55); display: flex; align-items: center; justify-content: center; gap: 0.6rem; opacity: 0; transition: opacity 0.3s;">
+            <a href="{{ url_for('serve_shared_file', share_id=share_id, doc_id=doc.doc_id, action='view') }}"
+               class="overlay-btn" title="View" style="width: 32px; height: 32px; border-radius: 50%; background: rgba(255,255,255,0.16); backdrop-filter: blur(6px); border: 1px solid rgba(255,255,255,0.35); color: #fff; display: flex; align-items: center; justify-content: center; transition: var(--transition);">
+              <i class="fas fa-eye"></i>
+            </a>
+            {% if link.allow_download %}
+            <a href="{{ url_for('serve_shared_file', share_id=share_id, doc_id=doc.doc_id, action='download') }}"
+               class="overlay-btn" title="Download" style="width: 32px; height: 32px; border-radius: 50%; background: rgba(255,255,255,0.16); backdrop-filter: blur(6px); border: 1px solid rgba(255,255,255,0.35); color: #fff; display: flex; align-items: center; justify-content: center; transition: var(--transition);">
+              <i class="fas fa-download"></i>
+            </a>
+            {% endif %}
+          </div>
+        </div>
+        <div class="doc-card-body" style="display: flex; align-items: flex-start; gap: 0.65rem; padding: 0.8rem 0.8rem 0.45rem;">
+          <div class="doc-file-icon {{ doc.file_type }}">
+            <i class="fas fa-{% if doc.file_type == 'pdf' %}file-pdf{% else %}image{% endif %}"></i>
+          </div>
+          <div class="doc-details" style="flex:1;min-width:0; text-align:left;">
+            <span class="doc-filename" title="{{ doc.filename }}" style="font-weight:600; display:block; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">{{ doc.filename }}</span>
+            <div class="doc-card-meta">
+              <span class="badge badge-{{ 'red' if doc.file_type == 'pdf' else 'blue' }}">
+                {{ doc.file_type.upper() }}
+              </span>
+              <span style="font-size:.72rem;color:var(--text-muted);">{{ (doc.file_size / 1024)|round(1) }} KB</span>
+            </div>
+          </div>
+        </div>
+        <div class="doc-card-footer" style="display:flex; gap:0.5rem; padding:0.7rem 0.8rem; border-top:1px solid var(--border); background:var(--surface2);">
+          <a href="{{ url_for('serve_shared_file', share_id=share_id, doc_id=doc.doc_id, action='view') }}"
+             class="btn btn-sm btn-outline" style="flex:1; justify-content:center;">
+            <i class="fas fa-eye"></i> View
+          </a>
+          {% if link.allow_download %}
+          <a href="{{ url_for('serve_shared_file', share_id=share_id, doc_id=doc.doc_id, action='download') }}"
+             class="btn btn-sm btn-primary" style="flex:1; justify-content:center;">
+            <i class="fas fa-download"></i> Download
+          </a>
+          {% endif %}
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+  {% endif %}
+</div>
+
+{% else %}
+<div class="empty-state">
+  <i class="fas fa-folder-open"></i>
+  <h3>No documents in this shared selection</h3>
+</div>
+{% endif %}
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+function toggleFolderCollapse(folderId) {
+  const body = document.getElementById(folderId);
+  const chevron = document.getElementById('chevron-' + folderId);
+  if (body) {
+    if (body.classList.contains('hidden')) {
+      body.classList.remove('hidden');
+      if (chevron) chevron.style.transform = 'rotate(0deg)';
+    } else {
+      body.classList.add('hidden');
+      if (chevron) chevron.style.transform = 'rotate(-90deg)';
+    }
+  }
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+  // Setup Card Overlay Hover logic (since touch screen doesn't hover)
+  document.querySelectorAll('.doc-card').forEach(card => {
+    card.addEventListener('click', function(e) {
+      if (e.target.tagName !== 'A' && e.target.tagName !== 'I') {
+        const overlay = this.querySelector('.doc-card-overlay');
+        if (overlay) overlay.style.opacity = overlay.style.opacity === '1' ? '0' : '1';
+      }
+    });
+  });
+
+  const searchInput = document.getElementById('searchInput');
+  const filterChips = document.querySelectorAll('.filter-chip');
+  
+  function filterItemsShared() {
+    const q = searchInput ? searchInput.value.toLowerCase().trim() : '';
+    const activeChip = document.querySelector('.filter-chip.active');
+    const filter = activeChip ? activeChip.dataset.filter : 'all';
+    
+    document.querySelectorAll('.doc-card').forEach(card => {
+      const name = card.dataset.name || '';
+      const type = card.dataset.type || '';
+      
+      const matchesSearch = name.includes(q);
+      let matchesFilter = true;
+      if (filter === 'pdf') matchesFilter = (type === 'pdf');
+      else if (filter === 'image') matchesFilter = ['jpg','jpeg','png'].includes(type);
+      
+      if (matchesSearch && matchesFilter) {
+        card.style.display = '';
+      } else {
+        card.style.display = 'none';
+      }
+    });
+    
+    // Hide folder groups if all documents inside are hidden
+    document.querySelectorAll('.folder-group').forEach(group => {
+      const cards = group.querySelectorAll('.doc-card');
+      const visibleCards = Array.from(cards).filter(c => c.style.display !== 'none');
+      if (visibleCards.length === 0) {
+        group.style.display = 'none';
+      } else {
+        group.style.display = '';
+      }
+    });
+  }
+  
+  if (searchInput) {
+    searchInput.addEventListener('input', filterItemsShared);
+  }
+  
+  filterChips.forEach(chip => {
+    chip.addEventListener('click', function() {
+      filterChips.forEach(c => c.classList.remove('active'));
+      this.classList.add('active');
+      filterItemsShared();
+    });
+  });
+});
+</script>
+{% endblock %}

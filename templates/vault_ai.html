@@ -1,0 +1,471 @@
+{% extends "base.html" %}
+{% block title %}Vault AI — SecureVault{% endblock %}
+
+{% block content %}
+<div class="wrap" style="padding-top: 1.25rem; padding-bottom: 2rem;">
+<div class="chat-agent-container">
+  
+  <!-- Header Bar -->
+  <div class="chat-agent-header">
+    <div class="agent-profile">
+      <div class="agent-avatar" aria-hidden="true">
+        <i class="fas fa-robot"></i>
+        <span class="online-indicator" title="Assistant Active"></span>
+      </div>
+      <div class="agent-title-wrap">
+        <h1 class="agent-title">Vault AI</h1>
+        <div class="agent-subtitle">Private document assistant</div>
+        <div class="agent-status-line">
+          <span class="status-chip"><i class="fas fa-lock"></i> Private &amp; secure</span>
+          <span class="status-divider">·</span>
+          <span class="status-chip text-ready" id="indexed-count-chip">
+            {% if total_docs == 0 %}
+              No documents yet
+            {% elif completed_docs == 1 %}
+              1 document ready
+            {% else %}
+              {{ completed_docs }} documents ready
+            {% endif %}
+          </span>
+        </div>
+      </div>
+    </div>
+
+    <div class="header-actions">
+      <button type="button" class="action-btn" id="toggle-files-btn" onclick="toggleFilesDrawer()" title="View my documents" aria-label="View documents list">
+        <i class="fas fa-folder-open"></i>
+        <span>Documents ({{ total_docs }})</span>
+      </button>
+      <button type="button" class="action-btn action-btn--clear {% if not history %}is-hidden{% endif %}" id="clear-chat-btn" onclick="confirmClearChat()" title="Clear Chat History" aria-label="Clear chat history">
+        <i class="fas fa-broom"></i>
+        <span>Clear</span>
+      </button>
+    </div>
+  </div>
+
+  <div class="chat-agent-body">
+    
+    <!-- Main Chat Feed Area -->
+    <div class="chat-feed-wrapper">
+      <div class="chat-feed" id="chat-feed">
+        
+        {% if total_docs == 0 %}
+          <!-- ── Zero Documents Vault Empty State ─────────────────────── -->
+          <div class="vault-empty-state" id="vault-empty-state">
+            <div class="empty-state-badge" aria-hidden="true">
+              <i class="fas fa-folder-plus"></i>
+            </div>
+            <h2>Your vault is empty</h2>
+            <p class="empty-state-desc">Upload your documents to start asking questions about your personal information.</p>
+            <a href="{{ url_for('dashboard') }}" class="btn btn-primary empty-state-cta">
+              <span>Go to My Vault</span> <i class="fas fa-arrow-right"></i>
+            </a>
+
+            <div class="empty-state-preview">
+              <div class="preview-label">Once uploaded, you can ask:</div>
+              <ul class="preview-questions">
+                <li><i class="fas fa-check"></i> What's my CGPA?</li>
+                <li><i class="fas fa-check"></i> When does my passport expire?</li>
+                <li><i class="fas fa-check"></i> Show my certificates</li>
+              </ul>
+            </div>
+          </div>
+
+        {% else %}
+
+          <!-- ── Welcome Screen (Shown if chat feed is empty) ────────── -->
+          <div class="welcome-screen" id="welcome-screen" {% if history %}style="display: none;"{% endif %}>
+            <div class="welcome-badge" aria-hidden="true">
+              <i class="fas fa-sparkles"></i>
+            </div>
+            <h2>What would you like to know today?</h2>
+            <p class="welcome-subtitle">Ask questions about your uploaded documents.</p>
+
+            <div class="quick-prompts-grid">
+              <button type="button" class="quick-prompt-card" onclick="sendQuickPrompt('What score did I get in Hindi in 2nd PUC?')" title="Ask Hindi score">
+                <div class="prompt-icon"><i class="fas fa-graduation-cap"></i></div>
+                <div class="prompt-text">
+                  <span class="prompt-title">Hindi score</span>
+                  <span class="prompt-sub">Find from marksheet</span>
+                </div>
+              </button>
+
+              <button type="button" class="quick-prompt-card" onclick="sendQuickPrompt('What is my BCA overall percentage?')" title="Ask BCA percentage">
+                <div class="prompt-icon"><i class="fas fa-chart-line"></i></div>
+                <div class="prompt-text">
+                  <span class="prompt-title">BCA percentage</span>
+                  <span class="prompt-sub">Find from results</span>
+                </div>
+              </button>
+
+              <button type="button" class="quick-prompt-card" onclick="sendQuickPrompt('List all my uploaded certificates and marks cards')" title="Ask to list documents">
+                <div class="prompt-icon"><i class="fas fa-file-lines"></i></div>
+                <div class="prompt-text">
+                  <span class="prompt-title">Your documents</span>
+                  <span class="prompt-sub">Document overview</span>
+                </div>
+              </button>
+            </div>
+          </div>
+
+          <!-- ── Render Past History Messages if available ──────────── -->
+          {% if history %}
+            {% for item in history %}
+              <!-- User Query Bubble -->
+              <div class="chat-message user-message">
+                <div class="message-bubble">
+                  <span class="message-eyebrow">You asked</span>
+                  <div class="message-content">{{ item.question }}</div>
+                  <div class="message-time">{{ item.created_at|friendly_date }}</div>
+                </div>
+              </div>
+
+              <!-- Agent Answer Bubble -->
+              <div class="chat-message agent-message">
+                <div class="agent-msg-avatar" aria-hidden="true"><i class="fas fa-robot"></i></div>
+                <div class="message-bubble">
+                  <span class="message-eyebrow">Vault AI</span>
+                  <div class="message-content">{{ item.answer }}</div>
+
+                  {% if item.source_documents %}
+                    <div class="message-sources">
+                      <span class="sources-label">Sources</span>
+                      <div class="sources-pills">
+                        {% for s in item.source_documents %}
+                          <a href="{{ url_for('serve_file', vault_id=s.vault_id, doc_id=s.doc_id) }}" target="_blank" class="source-pill" title="View {{ s.filename }}">
+                            <i class="fas fa-file-lines"></i> <span>{{ s.filename }}</span>
+                          </a>
+                        {% endfor %}
+                      </div>
+                    </div>
+                  {% endif %}
+                </div>
+              </div>
+            {% endfor %}
+          {% endif %}
+
+        {% endif %}
+
+        <!-- Thinking / Loading Indicator (Hidden by default) -->
+        <div class="chat-message agent-message hidden" id="typing-indicator" aria-live="polite">
+          <div class="agent-msg-avatar" aria-hidden="true"><i class="fas fa-robot"></i></div>
+          <div class="message-bubble typing-bubble">
+            <div class="thinking-label">
+              <span class="thinking-dots" aria-hidden="true">
+                <span></span><span></span><span></span>
+              </span>
+              <span>Vault AI is thinking…</span>
+            </div>
+          </div>
+        </div>
+
+      </div>
+
+      {% if total_docs > 0 %}
+        <!-- ── Bottom Chat Composer ─────────────────────────────────── -->
+        <div class="chat-input-container">
+          <form id="agent-chat-form" class="chat-form">
+            <div class="chat-input-box">
+              <textarea id="chat-input" placeholder="Ask anything about your documents..." rows="1" required aria-label="Ask anything about your documents"></textarea>
+              
+              <button type="submit" id="send-btn" class="send-btn" title="Send question" aria-label="Send question">
+                <i class="fas fa-arrow-up" id="send-icon"></i>
+              </button>
+            </div>
+          </form>
+          <div class="chat-footer-note">
+            <i class="fas fa-lock" aria-hidden="true"></i>
+            <span>Grounded in your documents · Enter for new line · <strong>Ctrl + Enter</strong> to submit</span>
+          </div>
+        </div>
+      {% endif %}
+    </div>
+
+    <!-- Collapsible Right Drawer for Vault Files -->
+    <div class="files-drawer hidden" id="files-drawer" aria-label="My Documents drawer">
+      <div class="drawer-header">
+        <h3><i class="fas fa-folder-tree"></i> <span>My Documents</span></h3>
+        <button type="button" class="close-drawer-btn" onclick="toggleFilesDrawer()" title="Close drawer" aria-label="Close drawer">
+          <i class="fas fa-xmark"></i>
+        </button>
+      </div>
+      
+      <div class="drawer-content">
+        {% if documents %}
+          <div class="drawer-files-list">
+            {% for doc in documents %}
+              <div class="drawer-file-item">
+                <div class="file-info">
+                  <i class="{% if doc.file_type == 'pdf' %}fas fa-file-pdf text-danger{% elif doc.file_type == 'docx' %}fas fa-file-word text-info{% elif doc.file_type in ('jpg','jpeg','png') %}fas fa-file-image text-accent{% else %}fas fa-file-lines{% endif %}"></i>
+                  <a href="{{ url_for('serve_file', vault_id=doc.vault_id, doc_id=doc.doc_id) }}" target="_blank" class="file-name" title="{{ doc.filename }}">
+                    {{ doc.filename }}
+                  </a>
+                </div>
+                <div class="file-status">
+                  {% if doc.status == 'completed' %}
+                    <span class="badge badge-green"><i class="fas fa-check"></i> Ready</span>
+                  {% elif doc.status in ('processing', 'pending') %}
+                    <span class="badge badge-blue"><i class="fas fa-spinner fa-spin"></i> Processing…</span>
+                  {% else %}
+                    <span class="badge badge-danger"><i class="fas fa-exclamation-triangle"></i> Unprocessed</span>
+                  {% endif %}
+                </div>
+              </div>
+            {% endfor %}
+          </div>
+        {% else %}
+          <div class="empty-drawer">
+            <i class="fas fa-file-dashed-line" aria-hidden="true"></i>
+            <p>No documents yet.<br/>Upload documents to begin.</p>
+          </div>
+        {% endif %}
+      </div>
+    </div>
+
+  </div>
+</div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+document.addEventListener('DOMContentLoaded', () => {
+  const chatFeed = document.getElementById('chat-feed');
+  const chatInput = document.getElementById('chat-input');
+  const chatForm = document.getElementById('agent-chat-form');
+  const sendBtn = document.getElementById('send-btn');
+  const sendIcon = document.getElementById('send-icon');
+  const typingIndicator = document.getElementById('typing-indicator');
+  const welcomeScreen = document.getElementById('welcome-screen');
+  const clearBtn = document.getElementById('clear-chat-btn');
+
+  if (chatInput) {
+    function autoResize() {
+      chatInput.style.height = 'auto';
+      chatInput.style.height = Math.min(chatInput.scrollHeight, 200) + 'px';
+    }
+
+    chatInput.addEventListener('input', autoResize);
+
+    // Enter adds a new line (expanding textarea upward); Ctrl+Enter or Cmd+Enter submits
+    chatInput.addEventListener('keydown', (e) => {
+      if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+        e.preventDefault();
+        chatForm.dispatchEvent(new Event('submit'));
+      } else if (e.key === 'Enter') {
+        setTimeout(autoResize, 0);
+      }
+    });
+  }
+
+  // Scroll feed to bottom initially
+  scrollToBottom();
+
+  // Handle Form Submit
+  if (chatForm) {
+    chatForm.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const question = chatInput.value.trim();
+      if (!question) return;
+
+      // Hide welcome screen or empty state if visible
+      if (welcomeScreen) welcomeScreen.style.display = 'none';
+      const emptyState = document.getElementById('vault-empty-state');
+      if (emptyState) emptyState.style.display = 'none';
+
+      // Append User Message
+      appendUserMessage(question);
+      chatInput.value = '';
+      chatInput.style.height = 'auto';
+
+      // Show Clear button
+      if (clearBtn) clearBtn.classList.remove('is-hidden');
+
+      // Show Typing Indicator & Disable Input
+      setLoadingState(true);
+      scrollToBottom();
+
+      try {
+        const csrfMeta = document.querySelector('meta[name="csrf-token"]');
+        const csrfToken = csrfMeta ? csrfMeta.getAttribute('content') : '';
+        const headers = { 'Content-Type': 'application/json' };
+        if (csrfToken) {
+          headers['X-CSRFToken'] = csrfToken;
+        }
+
+        const response = await fetch('/api/ai/ask', {
+          method: 'POST',
+          headers: headers,
+          body: JSON.stringify({ question })
+        });
+        
+        if (response.ok) {
+          const res = await response.json();
+          appendAgentMessage(res.answer, res.sources);
+        } else {
+          try {
+            const errRes = await response.json();
+            appendAgentMessage(errRes.answer || "Something went wrong while searching your documents. Please try again.", []);
+          } catch (_) {
+            appendAgentMessage("Something went wrong while searching your documents. Please try again.", []);
+          }
+        }
+      } catch (err) {
+        console.error('Vault AI error:', err);
+        appendAgentMessage("Something went wrong while searching your documents. Please try again.", []);
+      } finally {
+        setLoadingState(false);
+        scrollToBottom();
+      }
+    });
+  }
+});
+
+function sendQuickPrompt(promptText) {
+  const chatInput = document.getElementById('chat-input');
+  if (!chatInput) return;
+  chatInput.value = promptText;
+  chatInput.focus();
+  document.getElementById('agent-chat-form').dispatchEvent(new Event('submit'));
+}
+
+function appendUserMessage(text) {
+  const chatFeed = document.getElementById('chat-feed');
+  const msgDiv = document.createElement('div');
+  msgDiv.className = 'chat-message user-message';
+  
+  const now = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  
+  msgDiv.innerHTML = `
+    <div class="message-bubble">
+      <span class="message-eyebrow">You asked</span>
+      <div class="message-content">${escapeHtml(text)}</div>
+      <div class="message-time">${now}</div>
+    </div>
+  `;
+  
+  // Insert before typing indicator
+  const typingIndicator = document.getElementById('typing-indicator');
+  chatFeed.insertBefore(msgDiv, typingIndicator);
+}
+
+function appendAgentMessage(answer, sources) {
+  const chatFeed = document.getElementById('chat-feed');
+  const msgDiv = document.createElement('div');
+  msgDiv.className = 'chat-message agent-message';
+  
+  let sourcesHtml = '';
+  if (sources && sources.length > 0) {
+    const pills = sources.map(s => `
+      <a href="/vault/${s.vault_id}/file/${s.doc_id}" target="_blank" class="source-pill" title="View ${escapeHtml(s.filename)}">
+        <i class="fas fa-file-lines"></i> <span>${escapeHtml(s.filename)}</span>
+      </a>
+    `).join('');
+    
+    sourcesHtml = `
+      <div class="message-sources">
+        <span class="sources-label">Sources</span>
+        <div class="sources-pills">${pills}</div>
+      </div>
+    `;
+  }
+
+  msgDiv.innerHTML = `
+    <div class="agent-msg-avatar" aria-hidden="true"><i class="fas fa-robot"></i></div>
+    <div class="message-bubble">
+      <span class="message-eyebrow">Vault AI</span>
+      <div class="message-content">${escapeHtml(answer)}</div>
+      ${sourcesHtml}
+    </div>
+  `;
+  
+  const typingIndicator = document.getElementById('typing-indicator');
+  chatFeed.insertBefore(msgDiv, typingIndicator);
+}
+
+function setLoadingState(isLoading) {
+  const chatInput = document.getElementById('chat-input');
+  const sendBtn = document.getElementById('send-btn');
+  const sendIcon = document.getElementById('send-icon');
+  const typingIndicator = document.getElementById('typing-indicator');
+
+  if (isLoading) {
+    if (chatInput) chatInput.disabled = true;
+    if (sendBtn) sendBtn.disabled = true;
+    if (sendIcon) sendIcon.className = "fas fa-spinner fa-spin";
+    if (typingIndicator) typingIndicator.classList.remove('hidden');
+  } else {
+    if (chatInput) {
+      chatInput.disabled = false;
+      chatInput.focus();
+    }
+    if (sendBtn) sendBtn.disabled = false;
+    if (sendIcon) sendIcon.className = "fas fa-arrow-up";
+    if (typingIndicator) typingIndicator.classList.add('hidden');
+  }
+}
+
+function scrollToBottom() {
+  const chatFeed = document.getElementById('chat-feed');
+  if (chatFeed) {
+    chatFeed.scrollTop = chatFeed.scrollHeight;
+  }
+}
+
+function toggleFilesDrawer() {
+  const drawer = document.getElementById('files-drawer');
+  if (drawer) {
+    drawer.classList.toggle('hidden');
+  }
+}
+
+function confirmClearChat() {
+  if (confirm("Clear your conversation history with Vault AI?")) {
+    clearChatMessages();
+  }
+}
+
+async function clearChatMessages() {
+  const chatFeed = document.getElementById('chat-feed');
+  const welcomeScreen = document.getElementById('welcome-screen');
+  const chatInput = document.getElementById('chat-input');
+  const clearBtn = document.getElementById('clear-chat-btn');
+  
+  // 1. Clear DOM message bubbles except typing indicator and welcome screen
+  const messages = chatFeed.querySelectorAll('.chat-message:not(#typing-indicator)');
+  messages.forEach(m => m.remove());
+  
+  if (welcomeScreen) {
+    welcomeScreen.style.display = 'flex';
+  }
+
+  if (clearBtn) {
+    clearBtn.classList.add('is-hidden');
+  }
+
+  if (chatInput) {
+    chatInput.value = '';
+    chatInput.style.height = 'auto';
+    chatInput.focus();
+  }
+
+  // 2. Persist clear action to backend database
+  try {
+    const csrfMeta = document.querySelector('meta[name="csrf-token"]');
+    const csrfToken = csrfMeta ? csrfMeta.getAttribute('content') : '';
+    const headers = {};
+    if (csrfToken) headers['X-CSRFToken'] = csrfToken;
+    await fetch('/api/ai/clear-history', { method: 'POST', headers: headers });
+  } catch (e) {
+    console.error('Failed to clear server chat history:', e);
+  }
+}
+
+function escapeHtml(text) {
+  if (!text) return '';
+  const div = document.createElement('div');
+  div.textContent = text;
+  return div.innerHTML;
+}
+</script>
+{% endblock %}

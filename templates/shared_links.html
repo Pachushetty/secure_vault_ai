@@ -1,0 +1,475 @@
+{% extends "base.html" %}
+{% block title %}Shared Documents — {{ vault.vault_name }} — SecureVault{% endblock %}
+{% block content %}
+<div class="wrap" style="padding-top: 1.5rem; padding-bottom: 3rem;">
+  <div class="form-layout">
+
+<div class="page-header">
+  <div class="page-header-nav">
+    <a href="{{ url_for('vault_view', vault_id=vault_id) }}" class="btn btn-ghost btn-sm">
+      <i class="fas fa-arrow-left"></i> Back to Folder
+    </a>
+  </div>
+  <h1><i class="fas fa-share-nodes"></i> Shared Documents — {{ vault.vault_name }}</h1>
+  <p>See who has access, stop sharing, or create a fresh link for anything shared from this folder.</p>
+</div>
+
+<div class="page-tabs">
+  <a href="{{ url_for('vault_view', vault_id=vault_id) }}" class="page-tab">
+    <i class="fas fa-folder-open"></i> Documents
+  </a>
+  <a href="{{ url_for('shared_links_page', vault_id=vault_id) }}" class="page-tab page-tab-active">
+    <i class="fas fa-share-nodes"></i> Shared Documents
+  </a>
+</div>
+
+<!-- Shared Links Section -->
+<div class="form-card">
+  <div class="form-card-header">
+    <div class="step-badge"><i class="fas fa-share-nodes"></i></div>
+    <div>
+      <h2>Shared Documents</h2>
+      <p>{{ share_links|length }} shared link(s) from this folder</p>
+    </div>
+  </div>
+  <div class="form-body">
+    {% if share_links %}
+    <div class="share-link-list">
+      {% for link in share_links %}
+      <form method="POST" action="{{ url_for('delete_share_link', vault_id=vault_id, share_id=link.share_id) }}"
+            id="del-share-form-{{ link.share_id }}" style="display:none;">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"></form>
+      <div class="share-link-card" id="share-link-card-{{ link.share_id }}">
+        <!-- Link Header -->
+        <div class="share-link-head">
+          <div class="share-link-status" id="share-status-pill-{{ link.share_id }}">
+            {% set is_expired = link.expires_at and link.expires_at < now_iso %}
+            {% if link.is_revoked %}
+              <span class="status-pill status-off"><span class="status-pill-dot"></span> Sharing stopped</span>
+            {% elif is_expired %}
+              <span class="status-pill status-warn"><span class="status-pill-dot"></span> Expired</span>
+            {% else %}
+              <span class="status-pill status-ok"><span class="status-pill-dot"></span> Active</span>
+            {% endif %}
+            <span class="share-link-id">/shared/{{ link.share_id[:16] }}…</span>
+          </div>
+          <div class="share-link-flags">
+            {% if link.password_hash %}
+              <span class="badge badge-blue" title="Password protected"><i class="fas fa-lock"></i> Password</span>
+            {% else %}
+              <span class="badge badge-green" title="Anyone with the link"><i class="fas fa-globe"></i> Anyone with link</span>
+            {% endif %}
+            {% if link.allow_download %}
+              <span class="badge badge-green" title="Download allowed"><i class="fas fa-download"></i></span>
+            {% else %}
+              <span class="badge badge-orange" title="View only"><i class="fas fa-eye"></i></span>
+            {% endif %}
+            {% if not link.allow_printing %}
+              <span class="badge badge-orange" title="Printing turned off"><i class="fas fa-ban"></i> Print</span>
+            {% endif %}
+            {% if link.view_limit %}
+              <span class="badge badge-orange">{{ link.view_count }}/{{ link.view_limit }} max views</span>
+            {% else %}
+              <span class="share-link-views">{{ link.view_count }} views · Unlimited</span>
+            {% endif %}
+            {% if link.expires_at %}
+              <span class="badge badge-orange"><i class="fas fa-calendar-xmark"></i> Expires on {{ link.expires_at|friendly_date }}</span>
+            {% endif %}
+          </div>
+        </div>
+        <!-- Link Body -->
+        <div class="share-link-body">
+          <span class="share-link-date">Created {{ link.created_at|friendly_date }}</span>
+          <div class="share-link-actions">
+            <a href="{{ url_for('static', filename='qrcodes/share_' + link.share_id + '.png') }}"
+               class="btn btn-sm btn-outline" title="View QR code" target="_blank">
+              <i class="fas fa-qrcode"></i> QR
+            </a>
+            <button class="btn btn-sm btn-outline" title="View access history"
+                    onclick="loadShareLogs('{{ vault_id }}', '{{ link.share_id }}')">
+              <i class="fas fa-scroll"></i> Activity
+            </button>
+            <button type="button" class="btn btn-sm btn-outline" title="Edit permissions"
+                    onclick='openEditShareModal("{{ vault_id }}", "{{ link.share_id }}", {{ {
+                        "allow_download": link.allow_download,
+                        "allow_printing": link.allow_printing,
+                        "view_limit": link.view_limit,
+                        "expires_at": link.expires_at,
+                        "has_password": (link.password_hash is not none)
+                    }|tojson }})'>
+              <i class="fas fa-sliders"></i> Edit
+            </button>
+            {% if not link.is_revoked and not is_expired %}
+            <span id="share-active-actions-{{ link.share_id }}" style="display:contents;">
+              <form method="POST" action="{{ url_for('regenerate_share_link', vault_id=vault_id, share_id=link.share_id) }}" id="regen-share-form-{{ link.share_id }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <button type="submit" class="btn btn-sm btn-outline" title="Create a fresh link (this one stops working)"
+                        onclick="setBtnLoading(this, 'Regenerating...')">
+                  <i class="fas fa-rotate"></i> Regenerate
+                </button>
+              </form>
+              <button type="button" class="btn btn-sm btn-danger" title="Stop sharing"
+                      onclick="confirmStopSharingAjax('/shared/{{ link.share_id[:16] }}…', '{{ vault_id }}', '{{ link.share_id }}', () => stopShareCardInPlace('{{ link.share_id }}'))">
+                <i class="fas fa-ban"></i> Stop Sharing
+              </button>
+            </span>
+            <span id="share-stopped-note-{{ link.share_id }}" class="share-link-revoked-note hidden">🔴 Sharing stopped</span>
+            {% elif link.is_revoked %}
+              <span id="share-stopped-note-{{ link.share_id }}" class="share-link-revoked-note">🔴 Sharing stopped</span>
+            {% else %}
+              <span class="share-link-revoked-note">⏱️ Link expired</span>
+            {% endif %}
+            <button type="button" class="btn btn-sm btn-outline btn-outline-danger" title="Delete this record permanently"
+                    onclick="confirmDelete('/shared/{{ link.share_id[:16] }}…', 'del-share-form-{{ link.share_id }}', 'share_delete')">
+              <i class="fas fa-trash"></i> Delete
+            </button>
+          </div>
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+    {% else %}
+    <div class="empty-state-sm">
+      <i class="fas fa-share-nodes"></i>
+      <p>Nothing shared yet. Open this folder, select a document, and share it to see it here.</p>
+      <a href="{{ url_for('vault_view', vault_id=vault_id) }}" class="btn btn-primary btn-sm" style="margin-top: 0.75rem;">
+        <i class="fas fa-folder-open"></i> Open Folder
+      </a>
+    </div>
+    {% endif %}
+  </div>
+</div>
+</div>
+</div>
+
+<!-- Share Logs Modal -->
+<div class="modal-overlay logs-modal-overlay hidden" id="shareLogsModal" onclick="if(event.target===this)closeShareLogsModal()">
+  <div class="logs-modal">
+    <div class="logs-modal-header">
+      <h3><i class="fas fa-chart-line"></i> Sharing Activity</h3>
+      <div class="logs-modal-actions">
+        <button class="btn btn-outline btn-sm" id="btnExportLogs" onclick="exportShareLogs()"><i class="fas fa-file-export"></i> Export CSV</button>
+        <button class="btn btn-outline btn-sm btn-outline-danger" id="btnClearLogs" onclick="clearShareLogs()"><i class="fas fa-trash-alt"></i> Clear</button>
+        <button class="btn btn-ghost btn-sm" onclick="closeShareLogsModal()"><i class="fas fa-xmark"></i></button>
+      </div>
+    </div>
+
+    <!-- Stats Row -->
+    <div class="logs-stats" id="logsStatsContainer">
+      <div class="logs-stat">
+        <div class="logs-stat-label">Total Scans</div>
+        <div class="logs-stat-value" id="statScans">0</div>
+      </div>
+      <div class="logs-stat">
+        <div class="logs-stat-label">Success Views</div>
+        <div class="logs-stat-value success" id="statViews">0</div>
+      </div>
+      <div class="logs-stat">
+        <div class="logs-stat-label">Failed Auth</div>
+        <div class="logs-stat-value danger" id="statFails">0</div>
+      </div>
+      <div class="logs-stat">
+        <div class="logs-stat-label">Downloads</div>
+        <div class="logs-stat-value primary" id="statDownloads">0</div>
+      </div>
+    </div>
+
+    <!-- Filters Row -->
+    <div class="logs-filters">
+      <div class="logs-filter-field">
+        <label>Search (IP or Details)</label>
+        <input type="text" id="logSearch" placeholder="Search logs..." class="form-input" onkeypress="if(event.key==='Enter') applyLogFilters()">
+      </div>
+      <div class="logs-filter-field logs-filter-field-date">
+        <label>Start Date</label>
+        <input type="date" id="logStartDate" class="form-input">
+      </div>
+      <div class="logs-filter-field logs-filter-field-date">
+        <label>End Date</label>
+        <input type="date" id="logEndDate" class="form-input">
+      </div>
+      <div class="logs-filter-field logs-filter-field-btn">
+        <button class="btn btn-primary" onclick="applyLogFilters()"><i class="fas fa-filter"></i> Filter</button>
+      </div>
+    </div>
+
+    <div id="shareLogsContent" class="logs-content">
+      <div class="empty-state-sm"><i class="fas fa-spinner fa-spin"></i><p>Loading logs...</p></div>
+    </div>
+  </div>
+</div>
+
+<!-- Edit Share Permissions Modal -->
+<div class="modal-overlay logs-modal-overlay hidden" id="editShareModal" onclick="if(event.target===this)closeEditShareModal()">
+  <div class="logs-modal" style="max-width: 480px;">
+    <div class="logs-modal-header">
+      <h3><i class="fas fa-sliders"></i> Edit Share Permissions</h3>
+      <div class="logs-modal-actions">
+        <button class="btn btn-ghost btn-sm" onclick="closeEditShareModal()"><i class="fas fa-xmark"></i></button>
+      </div>
+    </div>
+
+    <form id="editShareForm" class="form-body" style="padding: 1.25rem;" onsubmit="submitEditShareForm(event)">
+      <div class="advanced-option-row">
+        <div class="advanced-option-text">
+          <strong>Allow downloading</strong>
+          <span>Let people save a copy of the document.</span>
+        </div>
+        <label class="switch">
+          <input type="checkbox" id="editAllowDownload" />
+          <span class="switch-track"></span>
+        </label>
+      </div>
+      <div class="advanced-option-row">
+        <div class="advanced-option-text">
+          <strong>Allow printing</strong>
+          <span>Let people print the document.</span>
+        </div>
+        <label class="switch">
+          <input type="checkbox" id="editAllowPrinting" />
+          <span class="switch-track"></span>
+        </label>
+      </div>
+
+      <div class="form-group" style="margin-top: 1rem;">
+        <label class="form-label">Max views <span style="color:var(--text-muted); font-weight:400;">(leave blank for unlimited)</span></label>
+        <input type="number" min="1" id="editViewLimit" class="form-input" placeholder="Unlimited">
+      </div>
+
+      <div class="form-group">
+        <label class="form-label">Expires on <span style="color:var(--text-muted); font-weight:400;">(leave blank for no expiry)</span></label>
+        <input type="datetime-local" id="editExpiresAt" class="form-input">
+      </div>
+
+      <div class="form-group">
+        <label class="form-label" id="editPasswordLabel">Set a password</label>
+        <input type="text" id="editPassword" class="form-input" placeholder="Leave blank to keep current setting">
+        <label id="editRemovePasswordRow" class="hidden" style="display:flex; align-items:center; gap:0.4rem; margin-top:0.5rem; font-size:0.85rem; color:var(--text-muted); cursor:pointer;">
+          <input type="checkbox" id="editRemovePassword"> Remove password protection
+        </label>
+      </div>
+
+      <div style="display:flex; gap:0.75rem; justify-content:flex-end; margin-top:1.25rem;">
+        <button type="button" class="btn btn-outline" onclick="closeEditShareModal()">Cancel</button>
+        <button type="submit" class="btn btn-primary" id="editShareSaveBtn"><i class="fas fa-check"></i> Save Changes</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+{% endblock %}
+{% block scripts %}
+<script>
+let currentVaultId = null;
+let currentShareId = null;
+let editShareVaultId = null;
+let editShareId = null;
+
+function openEditShareModal(vaultId, shareId, current) {
+  editShareVaultId = vaultId;
+  editShareId = shareId;
+
+  document.getElementById('editAllowDownload').checked = !!current.allow_download;
+  document.getElementById('editAllowPrinting').checked = !!current.allow_printing;
+  document.getElementById('editViewLimit').value = current.view_limit || '';
+  document.getElementById('editExpiresAt').value = current.expires_at ? current.expires_at.slice(0, 16) : '';
+  document.getElementById('editPassword').value = '';
+  document.getElementById('editRemovePassword').checked = false;
+
+  const label = document.getElementById('editPasswordLabel');
+  const removeRow = document.getElementById('editRemovePasswordRow');
+  if (current.has_password) {
+    label.textContent = 'Change password';
+    removeRow.classList.remove('hidden');
+    removeRow.style.display = 'flex';
+  } else {
+    label.textContent = 'Set a password';
+    removeRow.classList.add('hidden');
+    removeRow.style.display = 'none';
+  }
+
+  document.getElementById('editShareModal').classList.remove('hidden');
+}
+
+function closeEditShareModal() {
+  document.getElementById('editShareModal').classList.add('hidden');
+}
+
+/* After Stop Sharing succeeds via AJAX, update this card in place instead
+   of doing a full page reload/redirect. */
+function stopShareCardInPlace(shareId) {
+  const actions = document.getElementById(`share-active-actions-${shareId}`);
+  if (actions) actions.style.display = 'none';
+  const note = document.getElementById(`share-stopped-note-${shareId}`);
+  if (note) note.classList.remove('hidden');
+  const pill = document.getElementById(`share-status-pill-${shareId}`);
+  if (pill) {
+    const statusSpan = pill.querySelector('.status-pill');
+    if (statusSpan) {
+      statusSpan.className = 'status-pill status-off';
+      statusSpan.innerHTML = '<span class="status-pill-dot"></span> Sharing stopped';
+    }
+  }
+}
+
+async function submitEditShareForm(e) {
+  e.preventDefault();
+  const btn = document.getElementById('editShareSaveBtn');
+  setBtnLoading(btn, 'Saving...');
+
+  const payload = {
+    allow_download: document.getElementById('editAllowDownload').checked,
+    allow_printing: document.getElementById('editAllowPrinting').checked,
+    view_limit: document.getElementById('editViewLimit').value,
+    expires_at: document.getElementById('editExpiresAt').value,
+    password: document.getElementById('editPassword').value,
+    remove_password: document.getElementById('editRemovePassword').checked
+  };
+
+  try {
+    const res = await fetch(`/vault/${editShareVaultId}/share/${editShareId}/update`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+    const data = await res.json();
+    if (data.success) {
+      showToast('Share permissions updated.', 'success');
+      closeEditShareModal();
+      setTimeout(() => location.reload(), 600);
+    } else {
+      showToast(data.message || 'Could not update permissions.', 'error');
+      btn.disabled = false;
+      btn.innerHTML = '<i class="fas fa-check"></i> Save Changes';
+    }
+  } catch (err) {
+    showToast('Network error while saving. Please try again.', 'error');
+    btn.disabled = false;
+    btn.innerHTML = '<i class="fas fa-check"></i> Save Changes';
+  }
+}
+
+
+function loadShareLogs(vaultId, shareId) {
+  currentVaultId = vaultId;
+  currentShareId = shareId;
+  document.getElementById('shareLogsModal').classList.remove('hidden');
+
+  // Reset filters
+  document.getElementById('logSearch').value = '';
+  document.getElementById('logStartDate').value = '';
+  document.getElementById('logEndDate').value = '';
+
+  fetchLogsData();
+}
+
+function applyLogFilters() {
+  fetchLogsData();
+}
+
+function fetchLogsData() {
+  const content = document.getElementById('shareLogsContent');
+  content.innerHTML = '<div class="empty-state-sm"><i class="fas fa-spinner fa-spin"></i><p>Loading...</p></div>';
+
+  const search = document.getElementById('logSearch').value;
+  const startDate = document.getElementById('logStartDate').value;
+  const endDate = document.getElementById('logEndDate').value;
+
+  let url = `/vault/${currentVaultId}/share/${currentShareId}/logs?`;
+  if (search) url += `search=${encodeURIComponent(search)}&`;
+  if (startDate) url += `start_date=${encodeURIComponent(startDate)}&`;
+  if (endDate) url += `end_date=${encodeURIComponent(endDate)}&`;
+
+  fetch(url)
+    .then(r => r.json())
+    .then(data => {
+      if (!data.success) {
+        content.innerHTML = '<div class="empty-state-sm"><i class="fas fa-triangle-exclamation"></i><p>Failed to load logs.</p></div>';
+        return;
+      }
+
+      // Update stats
+      if (data.stats) {
+        document.getElementById('statScans').innerText = data.stats.total_scans || 0;
+        document.getElementById('statViews').innerText = data.stats.successful_views || 0;
+        document.getElementById('statFails').innerText = data.stats.failed_attempts || 0;
+        document.getElementById('statDownloads').innerText = data.stats.total_downloads || 0;
+      }
+
+      if (!data.logs || !data.logs.length) {
+        content.innerHTML = '<div class="empty-state-sm"><i class="fas fa-scroll"></i><p>No access logs found.</p></div>';
+        return;
+      }
+
+      const rows = data.logs.map(log => `
+        <tr>
+          <td class="logs-cell-muted">${(log.scanned_at || '').replace('T', ' ').substring(0, 16)}</td>
+          <td>
+            <span class="badge badge-${log.action === 'download' ? 'blue' : log.action === 'failed_auth' ? 'red' : log.action === 'scan' ? 'green' : 'orange'} logs-badge-action">${log.action}</span>
+          </td>
+          <td class="logs-cell-mono">${log.ip_address || '—'}</td>
+          <td class="logs-cell-muted logs-cell-ellipsis" title="${log.details || ''}">${log.details || '—'}</td>
+          <td class="logs-cell-muted logs-cell-ellipsis logs-cell-browser" title="${log.user_agent || ''}">${(log.user_agent || '').substring(0, 30)}${log.user_agent && log.user_agent.length > 30 ? '…' : ''}</td>
+        </tr>
+      `).join('');
+      content.innerHTML = `
+        <div class="logs-table-wrap">
+          <table class="logs-table">
+            <thead>
+              <tr>
+                <th>Time</th>
+                <th>Action</th>
+                <th>IP</th>
+                <th>Details</th>
+                <th>Browser</th>
+              </tr>
+            </thead>
+            <tbody>${rows}</tbody>
+          </table>
+        </div>
+        <p class="logs-count">Showing ${data.logs.length} log(s)</p>
+      `;
+    })
+    .catch(() => {
+      content.innerHTML = '<div class="empty-state-sm"><i class="fas fa-triangle-exclamation"></i><p>Failed to load logs.</p></div>';
+    });
+}
+
+function exportShareLogs() {
+  if (!currentVaultId || !currentShareId) return;
+  const search = document.getElementById('logSearch').value;
+  const startDate = document.getElementById('logStartDate').value;
+  const endDate = document.getElementById('logEndDate').value;
+
+  let url = `/vault/${currentVaultId}/share/${currentShareId}/logs/export?`;
+  if (search) url += `search=${encodeURIComponent(search)}&`;
+  if (startDate) url += `start_date=${encodeURIComponent(startDate)}&`;
+  if (endDate) url += `end_date=${encodeURIComponent(endDate)}&`;
+
+  window.open(url, '_blank');
+}
+
+function clearShareLogs() {
+  if (!currentVaultId || !currentShareId) return;
+  if (!confirm("Are you sure you want to permanently clear all logs for this share link? This cannot be undone.")) return;
+
+  fetch(`/vault/${currentVaultId}/share/${currentShareId}/logs`, { method: 'DELETE' })
+    .then(r => r.json())
+    .then(data => {
+      if (data.success) {
+        fetchLogsData();
+      } else {
+        alert("Failed to clear logs.");
+      }
+    });
+}
+
+function closeShareLogsModal() {
+  document.getElementById('shareLogsModal').classList.add('hidden');
+}
+
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape') closeShareLogsModal();
+});
+</script>
+{% endblock %}

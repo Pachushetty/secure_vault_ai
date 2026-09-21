@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <meta name="csrf-token" content="{{ csrf_token() }}"/>
+  <title>{% block title %}SecureVault{% endblock %}</title>
+  <link rel="icon" type="image/svg+xml" href="{{ url_for('static', filename='favicon.svg') }}"/>
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/tokens.css') }}?v=2.2"/>
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}?v=2.2"/>
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/pages.css') }}?v=2.2"/>
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/pages-extra.css') }}?v=2.2"/>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css"/>
+  {% block head_extra %}{% endblock %}
+
+</head>
+<body>
+  <nav class="navbar" id="mainNavbar">
+    <div class="nav-container">
+      <a href="{{ url_for('index') }}" class="nav-brand">
+        <i class="fas fa-shield-halved"></i>
+        <span>SecureVault</span>
+      </a>
+
+      <button type="button" class="nav-toggle" id="navToggle" aria-label="Toggle navigation" aria-expanded="false" aria-controls="navLinks">
+        <i class="fas fa-bars"></i>
+      </button>
+
+      <div class="nav-links" id="navLinks">
+        {% if current_user %}
+          <!-- Authenticated Navigation -->
+          <a href="{{ url_for('index') }}" class="nav-item {% if request.endpoint == 'index' %}is-active{% endif %}">
+            <i class="fas fa-house"></i> <span>Home</span>
+          </a>
+          <a href="{{ url_for('dashboard') }}" class="nav-item {% if request.endpoint in ('dashboard', 'vault_view', 'manage_vault', 'create_vault', 'vault_created') %}is-active{% endif %}">
+            <i class="fas fa-folder-closed"></i> <span>My Vault</span>
+          </a>
+          <a href="{{ url_for('vault_ai') }}" class="nav-item {% if request.endpoint == 'vault_ai' %}is-active{% endif %}">
+            <i class="fas fa-robot"></i> <span>Vault AI</span>
+          </a>
+          <a href="{{ url_for('activity_page') }}" class="nav-item {% if request.endpoint == 'activity_page' %}is-active{% endif %}">
+            <i class="fas fa-clock-rotate-left"></i> <span>Activity</span>
+          </a>
+
+          <!-- Profile / Avatar Dropdown Menu -->
+          <div class="nav-user-menu" id="userMenuWrap">
+            <button type="button" class="nav-user-btn" id="userMenuBtn" aria-expanded="false" aria-haspopup="true" onclick="toggleUserMenu(event)">
+              {% if current_user.profile_picture %}
+                <img src="{{ current_user.profile_picture }}" alt="{{ current_user.name or 'Profile' }}" class="nav-avatar-img"/>
+              {% else %}
+                <div class="nav-avatar-initials">
+                  {{ (current_user.name or current_user.email)[:1]|upper }}
+                </div>
+              {% endif %}
+              <span class="nav-user-name">{{ current_user.name or current_user.email.split('@')[0] }}</span>
+              <i class="fas fa-chevron-down nav-user-chevron"></i>
+            </button>
+
+            <div class="nav-dropdown hidden" id="userDropdown" role="menu">
+              <div class="nav-dropdown-header">
+                <div class="nav-dropdown-user-name">{{ current_user.name or 'Account Owner' }}</div>
+                <div class="nav-dropdown-user-email">{{ current_user.email }}</div>
+              </div>
+              <div class="nav-dropdown-divider"></div>
+              <a href="{{ url_for('profile_page') }}" class="nav-dropdown-item {% if request.endpoint == 'profile_page' %}is-active{% endif %}" role="menuitem">
+                <i class="fas fa-user"></i> Profile
+              </a>
+              <a href="{{ url_for('settings_page') }}" class="nav-dropdown-item {% if request.endpoint == 'settings_page' %}is-active{% endif %}" role="menuitem">
+                <i class="fas fa-gear"></i> Settings
+              </a>
+              <a href="{{ url_for('security_page') }}" class="nav-dropdown-item {% if request.endpoint == 'security_page' %}is-active{% endif %}" role="menuitem">
+                <i class="fas fa-shield-halved"></i> Security
+              </a>
+              <div class="nav-dropdown-divider"></div>
+              <a href="{{ url_for('logout') }}" class="nav-dropdown-item nav-dropdown-item--logout" role="menuitem">
+                <i class="fas fa-right-from-bracket"></i> Logout
+              </a>
+            </div>
+          </div>
+        {% else %}
+          <!-- Unauthenticated Navigation -->
+          <a href="{{ url_for('index') }}" class="nav-item {% if request.endpoint == 'index' %}is-active{% endif %}">
+            <i class="fas fa-house"></i> <span>Home</span>
+          </a>
+          <a href="{{ url_for('index') }}#ai" class="nav-item">
+            <i class="fas fa-robot"></i> <span>Vault AI</span>
+          </a>
+          <a href="{{ url_for('login') }}" class="btn btn-sm btn-ghost {% if request.endpoint == 'login' %}is-active{% endif %}">
+            <i class="fas fa-right-to-bracket"></i> Login
+          </a>
+          <a href="{{ url_for('register') }}" class="btn btn-sm btn-primary">
+            <i class="fas fa-user-plus"></i> Sign Up
+          </a>
+        {% endif %}
+      </div>
+    </div>
+  </nav>
+
+  <div id="toast-container"></div>
+
+  <!-- Delete / Stop-Sharing Confirmation Modal -->
+  <div class="modal-overlay hidden" id="deleteModal" onclick="if(event.target===this)cancelDelete()">
+    <div class="modal" role="alertdialog" aria-modal="true" aria-labelledby="deleteModalTitle">
+      <div class="modal-icon"><i class="fas fa-triangle-exclamation"></i></div>
+      <h3 id="deleteModalTitle">Delete this document?</h3>
+      <p id="deleteModalMessage">Are you sure you want to delete <span class="modal-filename" id="deleteFilename"></span>?<br>
+      This action <strong>cannot be undone.</strong></p>
+      <div class="modal-actions">
+        <button class="btn btn-outline" onclick="cancelDelete()">
+          <i class="fas fa-xmark"></i> Cancel
+        </button>
+        <button class="btn btn-danger" id="deleteModalConfirmBtn" onclick="proceedDelete()">
+          <i class="fas fa-trash"></i> Delete Document
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <main class="main-content">
+    {% with messages = get_flashed_messages(with_categories=true) %}
+      {% if messages %}
+        <div class="flash-container">
+          {% for category, message in messages %}
+            <div class="alert alert-{{ category }}">
+              <span>{{ message }}</span>
+            </div>
+          {% endfor %}
+        </div>
+      {% endif %}
+    {% endwith %}
+    {% block content %}{% endblock %}
+  </main>
+
+  <footer class="footer">
+    <p><i class="fas fa-shield-halved"></i>SecureVault — your documents, always sealed.</p>
+    <p class="footer-legal-links">
+      <a href="{{ url_for('terms_page') }}">Terms of Service</a>
+      <span aria-hidden="true">·</span>
+      <a href="{{ url_for('privacy_page') }}">Privacy Policy</a>
+    </p>
+  </footer>
+
+  <script src="{{ url_for('static', filename='js/main.js') }}"></script>
+  {% block scripts %}{% endblock %}
+</body>
+</html>

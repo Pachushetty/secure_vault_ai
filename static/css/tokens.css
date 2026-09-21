@@ -1,0 +1,129 @@
+/* ==========================================================================
+   SecureVault — Design Tokens
+   The vault as a document of record: every card behaves like an official
+   paper — perforated stub, register marks, a wax-press seal for verified
+   states. Grounded in passports, certificates, ID cards.
+   ========================================================================== */
+
+:root {
+  --navy-950: #0b0f1a;
+  --navy-900: #10162a;
+  --navy-800: #1a2340;
+  --navy-700: #2a3560;
+  --paper: #f5f1e8;
+  --paper-dim: #ece5d4;
+  --ink: #14171f;
+  --ink-soft: #4a4f5c;
+  --ink-faint: #7c8190;
+  --brass: #a9822f;
+  --brass-soft: #d8c690;
+  --teal: #2f6f62;
+  --teal-soft: #dceae6;
+  --brick: #9c3f37;
+  --brick-soft: #f3ddda;
+  --line: #d8cfb8;
+  --line-dark: rgba(245, 241, 232, 0.14);
+
+  --success: var(--teal);
+  --danger: var(--brick);
+  --warning: var(--brass);
+  --info: var(--navy-700);
+
+  --font-display: "Fraunces", "Iowan Old Style", Georgia, serif;
+  --font-body: "IBM Plex Sans", "Inter", -apple-system, sans-serif;
+  --font-mono: "IBM Plex Mono", "SFMono-Regular", monospace;
+
+  --step--1: 0.875rem;
+  --step-0: 1rem;
+  --step-1: 1.25rem;
+  --step-2: 1.75rem;
+  --step-3: 2.5rem;
+  --step-4: 3.5rem;
+  --step-5: 4.75rem;
+
+  --radius-card: 4px;
+  --radius-sm: 3px;
+  --ease: cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* ==========================================================================
+   Compatibility bridge — the deeper app pages (create/manage/vault/vault-ai/
+   shared-links/shared-vault/public-vault/doc-gate) use a second component
+   library (pages.css) written against these variable names. Aliasing them
+   here means that library renders in the same navy/brass palette as the
+   rest of the site instead of needing a line-by-line color rewrite.
+   ========================================================================== */
+:root {
+  --primary: var(--brass);
+  --primary-dark: #8a6a26;
+  --primary-hover: #8a6a26;
+  --primary-light: var(--paper-dim);
+  --primary-glow: rgba(169, 130, 47, .18);
+  --secondary: var(--navy-700);
+  --accent: var(--teal);
+  --accent-light: var(--teal-soft);
+
+  --bg: var(--paper);
+  --bg-main: var(--paper);
+  --surface: #ffffff;
+  --surface2: var(--paper-dim);
+  --surface3: #e3dcc8;
+  --card-bg: #ffffff;
+  --border: var(--line);
+  --border-color: var(--line);
+  --border-strong: #c2b696;
+
+  --text: var(--ink);
+  --text-main: var(--ink);
+  --text-strong: var(--ink);
+  --text-muted: var(--ink-soft);
+  --text-faint: var(--ink-faint);
+
+  --radius-xs: 2px;
+  --radius: 10px;
+  --radius-lg: 16px;
+  --radius-xl: 20px;
+
+  --shadow-sm: 0 1px 2px rgba(11, 15, 26, .05), 0 1px 1px rgba(11, 15, 26, .04);
+  --shadow: 0 2px 6px rgba(11, 15, 26, .05), 0 6px 14px rgba(11, 15, 26, .05);
+  --shadow-md: 0 8px 20px rgba(11, 15, 26, .09);
+  --shadow-lg: 0 16px 40px rgba(11, 15, 26, .14);
+  --shadow-card: 0 1px 2px rgba(11, 15, 26, .04), 0 4px 14px rgba(11, 15, 26, .05);
+
+  --font: var(--font-body);
+  --transition: .18s var(--ease);
+  --transition-slow: .35s var(--ease);
+  --nav-h: 64px;
+}
+
+.hidden { display: none !important; }
+
+/* ── Hide Scrollbars Project-wide (Scroll functionality remains 100% active) ── */
+html,
+body,
+*,
+*::before,
+*::after {
+  scrollbar-width: none !important; /* Firefox */
+  -ms-overflow-style: none !important; /* IE & Edge */
+}
+
+::-webkit-scrollbar {
+  display: none !important; /* Chrome, Safari, Edge, Opera */
+  width: 0 !important;
+  height: 0 !important;
+  background: transparent !important;
+}
+
+::-webkit-scrollbar-track,
+::-webkit-scrollbar-thumb {
+  display: none !important;
+  background: transparent !important;
+}

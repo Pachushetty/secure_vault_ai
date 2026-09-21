@@ -1,0 +1,97 @@
+{% extends "base.html" %}
+{% block title %}Login — SecureVault{% endblock %}
+{% block content %}
+<div class="gate-wrapper">
+  <div class="gate-card">
+    <div class="gate-icon"><i class="fas fa-envelope-open-text"></i></div>
+    <h1>Welcome back</h1>
+    <p class="gate-sub">Log in with your email and password to open your vaults.</p>
+
+    <form method="POST" class="gate-form" id="loginForm" autocomplete="off">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <div class="form-group" style="text-align:left; margin-bottom:1rem;">
+        <label class="form-label"><i class="fas fa-envelope"></i> Email address</label>
+        <div class="gate-input-wrap">
+          <i class="fas fa-envelope gate-input-icon"></i>
+          <input type="email" name="email" placeholder="you@example.com"
+                 class="gate-input" required autofocus autocomplete="email"/>
+        </div>
+      </div>
+      <div class="form-group" style="text-align:left; margin-bottom:1.5rem;">
+        <label class="form-label"><i class="fas fa-lock"></i> Password</label>
+        <div class="gate-input-wrap">
+          <i class="fas fa-lock gate-input-icon"></i>
+          <input type="password" name="password" id="loginPassword"
+                 placeholder="Enter your password" class="gate-input" required autocomplete="current-password"/>
+          <button type="button" class="toggle-pw-gate" onclick="togglePw('loginPassword')">
+            <i class="fas fa-eye"></i>
+          </button>
+        </div>
+      </div>
+      <div class="gate-forgot-row">
+        <a href="{{ url_for('forgot_password') }}" class="gate-forgot-link">Forgot password?</a>
+      </div>
+      <button type="submit" class="btn btn-primary btn-full btn-lg" id="loginBtn">
+        <i class="fas fa-unlock"></i> Log in
+      </button>
+    </form>
+
+    {% if google_client_id %}
+    <div class="gate-divider"><span>or</span></div>
+    <div id="googleSignInBtn" class="google-signin-btn-wrap"></div>
+    {% endif %}
+
+    <div class="gate-divider"><span>New here?</span></div>
+    <a href="{{ url_for('register') }}" class="btn btn-outline btn-full">
+      <i class="fas fa-user-plus"></i> Create an account
+    </a>
+
+    <div class="gate-info" style="margin-top:1.5rem;">
+      <div class="gate-info-item"><i class="fas fa-shield"></i> Your data is secure</div>
+      <div class="gate-info-item"><i class="fas fa-eye-slash"></i> No one else can see your files</div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+{% block scripts %}
+{% if google_client_id %}
+<script src="https://accounts.google.com/gsi/client" async defer></script>
+{% endif %}
+<script>
+document.getElementById('loginForm').addEventListener('submit', function() {
+  setBtnLoading(document.getElementById('loginBtn'), 'Logging in...');
+});
+
+{% if google_client_id %}
+window.addEventListener('load', function() {
+  google.accounts.id.initialize({
+    client_id: '{{ google_client_id }}',
+    callback: handleGoogleCredential
+  });
+  google.accounts.id.renderButton(
+    document.getElementById('googleSignInBtn'),
+    { theme: 'outline', size: 'large', width: 320, text: 'continue_with' }
+  );
+});
+
+function handleGoogleCredential(response) {
+  fetch('{{ url_for("google_signin") }}', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: 'credential=' + encodeURIComponent(response.credential)
+  })
+    .then(function(res) { return res.json().then(function(data) { return { ok: res.ok, data: data }; }); })
+    .then(function(result) {
+      if (result.ok && result.data.redirect) {
+        window.location.href = result.data.redirect;
+      } else {
+        showToast(result.data.error || 'Google sign-in failed. Please try again.', 'error');
+      }
+    })
+    .catch(function() {
+      showToast('Google sign-in failed. Please try again.', 'error');
+    });
+}
+{% endif %}
+</script>
+{% endblock %}

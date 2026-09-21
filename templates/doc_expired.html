@@ -1,0 +1,59 @@
+{% extends "base.html" %}
+{% block title %}Access Expired — SecureVault{% endblock %}
+{% block content %}
+<div class="gate-wrapper">
+  <div class="gate-card" style="box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.1); border: 1px solid var(--border-color); border-radius: 16px; background: var(--card-bg);">
+    
+    {% if reason == 'revoked' %}
+      <div class="gate-icon" style="background:#fee2e2; color:#ef4444;"><i class="fas fa-ban"></i></div>
+      <h1 style="color:var(--text-main); font-size:1.5rem; margin-bottom:0.5rem;">Sharing Was Stopped</h1>
+      <p class="gate-sub" style="color:var(--text-muted); font-size:0.95rem; margin-bottom:1.5rem; line-height:1.5;">
+        The owner has <strong>stopped sharing</strong> this selection. This link no longer works.
+      </p>
+    {% elif reason == 'onetime' %}
+      <div class="gate-icon" style="background:#fee2e2; color:#ef4444;"><i class="fas fa-circle-xmark"></i></div>
+      <h1 style="color:var(--text-main); font-size:1.5rem; margin-bottom:0.5rem;">Access Expired</h1>
+      <p class="gate-sub" style="color:var(--text-muted); font-size:0.95rem; margin-bottom:1.5rem; line-height:1.5;">
+        This document was set to <strong>one-time view</strong> and has already been viewed.
+      </p>
+    {% elif reason == 'expired' %}
+      <div class="gate-icon" style="background:#fee2e2; color:#ef4444;"><i class="fas fa-circle-xmark"></i></div>
+      <h1 style="color:var(--text-main); font-size:1.5rem; margin-bottom:0.5rem;">Link Expired</h1>
+      <p class="gate-sub" style="color:var(--text-muted); font-size:0.95rem; margin-bottom:1.5rem; line-height:1.5;">
+        The access window for this QR code / link has expired.
+      </p>
+    {% elif reason == 'limit' %}
+      <div class="gate-icon" style="background:#fee2e2; color:#ef4444;"><i class="fas fa-circle-xmark"></i></div>
+      <h1 style="color:var(--text-main); font-size:1.5rem; margin-bottom:0.5rem;">Maximum Views Reached</h1>
+      <p class="gate-sub" style="color:var(--text-muted); font-size:0.95rem; margin-bottom:1.5rem; line-height:1.5;">
+        This document has reached the maximum number of views set by the owner.
+      </p>
+    {% else %}
+      <div class="gate-icon" style="background:#fee2e2; color:#ef4444;"><i class="fas fa-circle-xmark"></i></div>
+      <h1 style="color:var(--text-main); font-size:1.5rem; margin-bottom:0.5rem;">Document Locked</h1>
+      <p class="gate-sub" style="color:var(--text-muted); font-size:0.95rem; margin-bottom:1.5rem; line-height:1.5;">
+        This document is no longer accessible.
+      </p>
+    {% endif %}
+    
+    {% if doc and doc.filename %}
+    <div style="background:var(--bg-main); padding:0.75rem 1rem; border-radius:8px; margin-bottom:1.5rem; text-align:left;">
+      <div style="font-weight:600; font-size:0.85rem; color:var(--text-muted); text-transform:uppercase; margin-bottom:0.25rem;">Document Name</div>
+      <div style="font-weight:600; font-size:0.95rem; color:var(--text-main); overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">{{ doc.filename }}</div>
+    </div>
+    {% endif %}
+    
+    <div style="display:flex; flex-direction:column; gap:0.75rem;">
+      {% if doc and doc.vault_id %}
+        <a href="{{ url_for('vault_gate', vault_id=doc.vault_id) }}" class="btn btn-primary btn-full btn-lg" style="width:100%; justify-content:center; font-weight:600;">
+          <i class="fas fa-folder-open"></i> Back to Shared Folder
+        </a>
+      {% endif %}
+      <a href="{{ url_for('index') }}" class="btn btn-outline btn-full btn-lg" style="width:100%; justify-content:center;">
+        <i class="fas fa-house"></i> Home Page
+      </a>
+    </div>
+    
+  </div>
+</div>
+{% endblock %}

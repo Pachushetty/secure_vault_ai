@@ -1,0 +1,104 @@
+{# ══════════════════════════════════════════════════════════
+   First-time onboarding. Shown once after a user's first login,
+   tracked client-side (localStorage, keyed per account) so it
+   never requires a database change. Included on the dashboard,
+   which is where both login and registration land. #}
+<div class="onboarding-overlay hidden" id="onboardingOverlay" role="dialog" aria-modal="true" aria-labelledby="onboardingTitle">
+  <div class="onboarding-card">
+
+    <!-- Welcome panel -->
+    <div class="onboarding-step-panel active" id="onboardingWelcome">
+      <div class="onboarding-icon"><i class="fas fa-hand-sparkles"></i></div>
+      <h2 id="onboardingTitle">Welcome to SecureVault 👋</h2>
+      <p>Keep your important documents organized, private, and easy to share.</p>
+      <ul class="onboarding-list">
+        <li><span class="onb-num">1</span> Add your documents</li>
+        <li><span class="onb-num">2</span> Organize them into folders</li>
+        <li><span class="onb-num">3</span> Share securely when needed</li>
+        <li><span class="onb-num">4</span> Ask questions about your documents</li>
+      </ul>
+      <div class="onboarding-actions">
+        <button type="button" class="btn btn-primary btn-lg" onclick="onboardingGoTo('step1')">Get Started</button>
+        <button type="button" class="onboarding-skip" onclick="onboardingFinish()">Skip</button>
+      </div>
+    </div>
+
+    <!-- Step 1 -->
+    <div class="onboarding-step-panel" id="onboarding-step1">
+      <div class="onboarding-dots">
+        <span class="onboarding-dot active"></span><span class="onboarding-dot"></span><span class="onboarding-dot"></span>
+      </div>
+      <div class="onboarding-step-icon"><i class="fas fa-file-arrow-up"></i></div>
+      <h2>📤 Add your documents</h2>
+      <p>Upload certificates, marksheets, identity documents, resumes, and more.</p>
+      <div class="onboarding-actions">
+        <button type="button" class="btn btn-primary btn-lg" onclick="onboardingGoTo('step2')">Continue</button>
+      </div>
+      <button type="button" class="onboarding-back-link" onclick="onboardingFinish()">Skip walkthrough</button>
+    </div>
+
+    <!-- Step 2 -->
+    <div class="onboarding-step-panel" id="onboarding-step2">
+      <div class="onboarding-dots">
+        <span class="onboarding-dot"></span><span class="onboarding-dot active"></span><span class="onboarding-dot"></span>
+      </div>
+      <div class="onboarding-step-icon"><i class="fas fa-folder-tree"></i></div>
+      <h2>📁 Organize your documents</h2>
+      <p>Create folders such as:</p>
+      <ul class="onboarding-list" style="text-align:center; display:block;">
+        <li style="justify-content:center;">Education</li>
+        <li style="justify-content:center;">Personal</li>
+        <li style="justify-content:center;">Work</li>
+        <li style="justify-content:center;">Certificates</li>
+      </ul>
+      <div class="onboarding-actions">
+        <button type="button" class="btn btn-primary btn-lg" onclick="onboardingGoTo('step3')">Continue</button>
+      </div>
+      <button type="button" class="onboarding-back-link" onclick="onboardingFinish()">Skip walkthrough</button>
+    </div>
+
+    <!-- Step 3 -->
+    <div class="onboarding-step-panel" id="onboarding-step3">
+      <div class="onboarding-dots">
+        <span class="onboarding-dot"></span><span class="onboarding-dot"></span><span class="onboarding-dot active"></span>
+      </div>
+      <div class="onboarding-step-icon"><i class="fas fa-share-nodes"></i></div>
+      <h2>🔗 Share securely</h2>
+      <p>Share documents using a secure link or QR code whenever you need.</p>
+      <div class="onboarding-actions">
+        <button type="button" class="btn btn-primary btn-lg" onclick="onboardingFinish()">Start Using SecureVault</button>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<script>
+(function() {
+  const ONB_KEY = 'sv-onboarding-complete-{{ (session.get("user_email") or "guest")|replace("@","-at-") }}';
+
+  function onboardingShouldShow() {
+    try { return localStorage.getItem(ONB_KEY) !== '1'; } catch (e) { return false; }
+  }
+
+  window.onboardingGoTo = function(stepId) {
+    document.querySelectorAll('.onboarding-step-panel').forEach(p => p.classList.remove('active'));
+    document.getElementById('onboarding-' + stepId).classList.add('active');
+  };
+
+  window.onboardingFinish = function() {
+    try { localStorage.setItem(ONB_KEY, '1'); } catch (e) {}
+    const overlay = document.getElementById('onboardingOverlay');
+    if (overlay) overlay.classList.add('hidden');
+    document.body.style.overflow = '';
+  };
+
+  document.addEventListener('DOMContentLoaded', function() {
+    if (!onboardingShouldShow()) return;
+    const overlay = document.getElementById('onboardingOverlay');
+    if (!overlay) return;
+    overlay.classList.remove('hidden');
+    document.body.style.overflow = 'hidden';
+  });
+})();
+</script>

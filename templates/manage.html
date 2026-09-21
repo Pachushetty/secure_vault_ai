@@ -1,0 +1,287 @@
+{% extends "base.html" %}
+{% block title %}Folder Settings — {{ vault.vault_name }} — SecureVault{% endblock %}
+{% block content %}
+<div class="wrap" style="padding-top: 1.5rem; padding-bottom: 3rem;">
+  <div class="form-layout">
+
+<!-- Hidden delete forms (submitted via modal) -->
+{% for doc in vault.documents %}
+<form method="POST" action="{{ url_for('delete_document', vault_id=vault_id, doc_id=doc.doc_id) }}"
+      id="del-form-{{ doc.doc_id }}" style="display:none;">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"></form>
+{% endfor %}
+
+<div class="page-header">
+  <div class="page-header-nav">
+    <a href="{{ url_for('vault_view', vault_id=vault_id) }}" class="btn btn-ghost btn-sm">
+      <i class="fas fa-arrow-left"></i> Back to Folder
+    </a>
+  </div>
+  <p class="page-header-eyebrow">Folder Settings</p>
+  <h1><i class="fas fa-gear"></i> {{ vault.vault_name }}</h1>
+  <p>Add, rename, or delete documents. Your QR code stays the same.</p>
+</div>
+
+<div class="page-tabs">
+  <a href="{{ url_for('manage_vault', vault_id=vault_id) }}" class="page-tab page-tab-active">
+    <i class="fas fa-gear"></i> Documents
+  </a>
+  <a href="{{ url_for('shared_links_page', vault_id=vault_id) }}" class="page-tab">
+    <i class="fas fa-share-nodes"></i> Shared Documents
+    {% if share_links %}<span class="page-tab-count">{{ share_links|length }}</span>{% endif %}
+  </a>
+</div>
+
+<!-- Add Documents -->
+<div class="form-card">
+  <div class="form-card-header">
+    <div class="step-badge"><i class="fas fa-plus"></i></div>
+    <div>
+      <h2>Add More Documents</h2>
+      <p>Upload additional files to this folder</p>
+    </div>
+  </div>
+  <div class="form-body">
+    <form method="POST" enctype="multipart/form-data" id="addForm">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <div class="drop-zone" id="dropZone">
+        <input type="file" id="fileInput" name="documents" multiple
+               accept=".pdf,.jpg,.jpeg,.png" class="file-input"/>
+        <div class="drop-zone-content">
+          <div class="drop-icon-wrap"><i class="fas fa-cloud-arrow-up drop-icon"></i></div>
+          <p class="drop-title">Drag & drop files here</p>
+          <p class="drop-sub">or click to browse</p>
+          <div class="format-chips">
+            <span class="chip chip-red">PDF</span>
+            <span class="chip chip-blue">JPG / JPEG</span>
+            <span class="chip chip-green">PNG</span>
+          </div>
+        </div>
+      </div>
+      <div id="fileList" class="file-list hidden"></div>
+      <div class="form-actions" style="margin-top:1rem;">
+        <button type="submit" class="btn btn-primary">
+          <i class="fas fa-upload"></i> Add Documents
+        </button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- Current Documents -->
+<div class="form-card">
+  <div class="form-card-header">
+    <div class="step-badge"><i class="fas fa-folder"></i></div>
+    <div>
+      <h2>Current Documents</h2>
+      <p>{{ vault.documents|length }} document(s) in this folder</p>
+    </div>
+  </div>
+  <div class="form-body">
+    {% if vault.documents %}
+    <div class="manage-doc-list">
+      {% for doc in vault.documents %}
+      <div class="manage-doc-card" id="doc-{{ doc.doc_id }}">
+        <div class="manage-doc-row">
+          <div class="doc-icon-sm {{ doc.file_type }}">
+            <i class="fas fa-{% if doc.file_type == 'pdf' %}file-pdf{% else %}image{% endif %}"></i>
+          </div>
+          <div class="doc-info">
+            <span class="doc-name" id="name-{{ doc.doc_id }}">{{ doc.filename }}</span>
+            <form method="POST" action="{{ url_for('rename_document', vault_id=vault_id, doc_id=doc.doc_id) }}"
+                  class="rename-form hidden" id="rename-form-{{ doc.doc_id }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+              <div class="rename-input-wrap">
+                <input type="text" name="new_name"
+                       value="{{ doc.filename.rsplit('.', 1)[0] }}"
+                       class="rename-input" required
+                       id="rename-input-{{ doc.doc_id }}"/>
+                <span class="rename-ext">.{{ doc.file_type }}</span>
+                <button type="submit" class="btn btn-sm btn-primary">
+                  <i class="fas fa-check"></i>
+                </button>
+                <button type="button" class="btn btn-sm btn-ghost"
+                        onclick="cancelRename('{{ doc.doc_id }}')">
+                  <i class="fas fa-xmark"></i>
+                </button>
+              </div>
+            </form>
+            <div class="doc-meta">
+              <span>{{ doc.file_type.upper() }}</span>
+              <span class="dot">·</span>
+              <span>{{ (doc.file_size / 1024)|round(1) }} KB</span>
+              <span class="dot">·</span>
+              <span>Added {{ doc.upload_date|friendly_date }}</span>
+              <span class="dot">·</span>
+              <span class="badge badge-{% if doc.access_type == 'public' %}green{% else %}orange{% endif %}">
+                {% if doc.access_type == 'public' %}🔓 Anyone can view
+                {% elif doc.access_type == 'code' %}🔑 Access code required
+                {% elif doc.access_type == 'onetime' %}👁️ One-time view
+                {% elif doc.access_type == 'expiring' %}⏳ Expires on a timer
+                {% elif doc.access_type == 'limit' %}🚫 Max views: {{ doc.view_count }}/{{ doc.view_limit }}
+                {% endif %}
+              </span>
+            </div>
+          </div>
+          <div class="doc-actions">
+            <a href="{{ url_for('serve_file', vault_id=vault_id, doc_id=doc.doc_id) }}"
+               target="_blank" class="btn btn-sm btn-outline" title="View">
+              <i class="fas fa-eye"></i>
+            </a>
+            <a href="{{ url_for('download_file', vault_id=vault_id, doc_id=doc.doc_id) }}"
+               class="btn btn-sm btn-outline" title="Download">
+              <i class="fas fa-download"></i>
+            </a>
+            <button type="button" class="btn btn-sm btn-outline"
+                    onclick="toggleAccessForm('{{ doc.doc_id }}')" title="Security">
+              <i class="fas fa-shield-halved"></i>
+            </button>
+            <a href="{{ url_for('download_doc_qr', doc_id=doc.doc_id) }}"
+               class="btn btn-sm btn-outline" title="Download QR Card">
+              <i class="fas fa-qrcode"></i>
+            </a>
+            <button type="button" class="btn btn-sm btn-outline btn-rename"
+                    onclick="startRename('{{ doc.doc_id }}')" title="Rename document">
+              <i class="fas fa-pencil"></i>
+            </button>
+            <button type="button" class="btn btn-sm btn-danger" title="Delete"
+                    onclick="confirmDelete('{{ doc.filename }}', 'del-form-{{ doc.doc_id }}')">
+              <i class="fas fa-trash"></i>
+            </button>
+          </div>
+        </div>
+
+        <!-- Document Access Edit Form Container -->
+        <div class="access-form-container hidden" id="access-form-{{ doc.doc_id }}">
+          <form method="POST" action="{{ url_for('update_doc_access', vault_id=vault_id, doc_id=doc.doc_id) }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <div class="access-form-grid">
+              <div class="access-form-field">
+                <label><i class="fas fa-tag"></i> Category</label>
+                <input type="text" name="folder_name" placeholder="e.g. Education, Personal, Work (leave empty for none)" value="{{ doc.folder_name or '' }}" class="form-input" />
+              </div>
+              <div class="access-form-field">
+                <label>Update Access Settings</label>
+                <select name="access_type" class="form-input" onchange="toggleAccessFieldsManage(this, '{{ doc.doc_id }}')">
+                  <option value="public" {% if doc.access_type == 'public' %}selected{% endif %}>🔓 Anyone with the link can view</option>
+                  <option value="code" {% if doc.access_type == 'code' %}selected{% endif %}>🔑 Access code required</option>
+                  <option value="onetime" {% if doc.access_type == 'onetime' %}selected{% endif %}>👁️ One-time view only</option>
+                  <option value="expiring" {% if doc.access_type == 'expiring' %}selected{% endif %}>⏳ Expires after a set time</option>
+                  <option value="limit" {% if doc.access_type == 'limit' %}selected{% endif %}>🚫 Maximum number of views</option>
+                </select>
+              </div>
+              <div class="access-form-field" id="access-options-manage-{{ doc.doc_id }}">
+                {% if doc.access_type == 'code' %}
+                  <label>Access Code</label>
+                  <input type="text" name="access_code" placeholder="{% if doc.access_code %}Leave blank to keep current code{% else %}Enter Access Code{% endif %}" class="form-input" />
+                  {% if doc.access_code %}<small style="color:var(--text-muted);">A code is already set. Enter a new one only if you want to change it.</small>{% endif %}
+                {% elif doc.access_type == 'limit' %}
+                  <label>Maximum Views</label>
+                  <input type="number" name="view_limit" placeholder="Enter maximum views" value="{{ doc.view_limit or '5' }}" min="1" required class="form-input" />
+                {% elif doc.access_type == 'expiring' %}
+                  <label>Expires In</label>
+                  <select name="expires_hours" class="form-input">
+                    <option value="1">1 Hour</option>
+                    <option value="3">3 Hours</option>
+                    <option value="24" selected>24 Hours</option>
+                    <option value="168">7 Days</option>
+                  </select>
+                {% endif %}
+              </div>
+            </div>
+            <div class="access-form-actions">
+              <button type="submit" class="btn btn-sm btn-primary" onclick="setBtnLoading(this, 'Saving...')">Save Settings</button>
+              <button type="button" class="btn btn-sm btn-ghost" onclick="toggleAccessForm('{{ doc.doc_id }}')">Cancel</button>
+            </div>
+          </form>
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+    {% else %}
+    <div class="empty-state-sm">
+      <i class="fas fa-folder-open"></i>
+      <p>No documents yet. Add your first document above.</p>
+    </div>
+    {% endif %}
+  </div>
+</div>
+
+<!-- QR Code -->
+<div class="form-card">
+  <div class="form-card-header">
+    <div class="step-badge"><i class="fas fa-qrcode"></i></div>
+    <div>
+      <h2>Folder QR Code</h2>
+      <p>Works forever — scan from any phone to access</p>
+    </div>
+  </div>
+  <div class="form-body qr-section">
+    <img src="{{ url_for('static', filename='qrcodes/' + vault_id + '.png') }}"
+         alt="QR Code" class="manage-qr"/>
+    <div class="manage-qr-actions">
+      <a href="{{ url_for('download_qr', vault_id=vault_id) }}" class="btn btn-primary">
+        <i class="fas fa-download"></i> Download QR
+      </a>
+    </div>
+  </div>
+  </div>
+</div>
+</div>
+
+{% endblock %}
+{% block scripts %}
+<script src="{{ url_for('static', filename='js/upload.js') }}"></script>
+<script>
+function toggleAccessForm(docId) {
+  const form = document.getElementById(`access-form-${docId}`);
+  if (form) {
+    form.classList.toggle('hidden');
+    if (!form.classList.contains('hidden')) {
+      form.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
+  }
+}
+function toggleAccessFieldsManage(selectEl, docId) {
+  const container = document.getElementById(`access-options-manage-${docId}`);
+  if (!container) return;
+  const val = selectEl.value;
+  if (val === 'code') {
+    container.innerHTML = `
+      <label>Access Code</label>
+      <input type="text" name="access_code" placeholder="Enter Access Code (e.g. 1234)" required class="form-input" />
+    `;
+  } else if (val === 'expiring') {
+    container.innerHTML = `
+      <label>Expiry</label>
+      <select name="expires_hours" class="form-input">
+        <option value="1">Expires in 1 Hour</option>
+        <option value="3">Expires in 3 Hours</option>
+        <option value="24" selected>Expires in 24 Hours</option>
+        <option value="168">Expires in 7 Days</option>
+      </select>
+    `;
+  } else if (val === 'limit') {
+    container.innerHTML = `
+      <label>View Limit</label>
+      <input type="number" name="view_limit" placeholder="Enter view limit (e.g. 5)" min="1" required class="form-input" value="5" />
+    `;
+  } else {
+    container.innerHTML = '';
+  }
+}
+
+/* Deep link support: the "Security" item in a document's ⋮ menu on the
+   folder page links here as #doc-<id>, so open that document's Security
+   panel automatically instead of leaving the person to hunt for it. */
+document.addEventListener('DOMContentLoaded', () => {
+  if (!location.hash.startsWith('#doc-')) return;
+  const docId = location.hash.slice(5);
+  const card = document.getElementById('doc-' + docId);
+  if (!card) return;
+  card.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  const form = document.getElementById('access-form-' + docId);
+  if (form) form.classList.remove('hidden');
+});
+</script>
+{% endblock %}

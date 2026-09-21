@@ -1,0 +1,21 @@
+# Secrets — never commit real credentials
+.env
+instance/secret.key
+instance/
+# Uploaded documents & generated QR codes — these are user data (often
+# real IDs like Aadhaar/PAN scans), not project source, and should never
+# end up in version control.
+private_storage/
+static/qrcodes/
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# Editor / OS cruft
+.vscode/
+.DS_Store
+
+

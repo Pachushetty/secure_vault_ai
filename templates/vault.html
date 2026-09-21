@@ -1,0 +1,1710 @@
+{% extends "base.html" %}
+{% from "components/macros.html" import empty_state %}
+{% block title %}{{ vault.vault_name }} — SecureVault{% endblock %}
+
+{% block head_extra %}
+<style>
+  /* ══════════════════════════════════════════════════════════════════════════
+     VAULT WORKSPACE — Document Card Grid
+     ========================================================================== */
+  body { overflow: hidden; }
+  .main-content { overflow: hidden; padding: 0 !important; flex: 1; min-height: 0 !important; }
+  .footer { display: none !important; }
+
+  /* ── Workspace Shell ── */
+  .vw-workspace {
+    display: flex;
+    height: calc(100vh - var(--nav-h, 60px));
+    overflow: hidden;
+    background: #f6f3eb;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    width: 100%;
+  }
+
+  /* ── Left Sidebar ── */
+  .vw-sidebar {
+    width: 240px;
+    min-width: 240px;
+    background: #080c14;
+    border-right: 1px solid rgba(255, 255, 255, 0.08);
+    display: flex;
+    flex-direction: column;
+    overflow-y: auto;
+    flex-shrink: 0;
+    transition: transform 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+    z-index: 200;
+  }
+  .vw-sidebar-inner {
+    padding: 1.5rem 0.85rem 2rem;
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+  }
+  .vw-sidebar-label {
+    font-size: 0.6875rem;
+    font-weight: 700;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: rgba(255, 255, 255, 0.35);
+    padding: 0 0.75rem;
+    margin-bottom: 0.6rem;
+  }
+  .vw-nav-item {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 0.6rem 0.85rem;
+    border-radius: 8px;
+    font-size: 0.875rem;
+    color: rgba(255, 255, 255, 0.65);
+    text-decoration: none;
+    transition: all 0.15s ease;
+    font-weight: 500;
+    cursor: pointer;
+    border: none;
+    background: none;
+    text-align: left;
+    width: 100%;
+    box-sizing: border-box;
+  }
+  .vw-nav-item i {
+    width: 18px;
+    text-align: center;
+    font-size: 0.85rem;
+    flex-shrink: 0;
+    color: rgba(255, 255, 255, 0.4);
+    transition: color 0.15s ease;
+  }
+  .vw-nav-item:hover {
+    background: rgba(255, 255, 255, 0.08);
+    color: #ffffff;
+  }
+  .vw-nav-item:hover i {
+    color: #d4af37;
+  }
+  .vw-nav-item.is-active {
+    background: rgba(169, 130, 47, 0.22);
+    color: #f1dfa2;
+    font-weight: 600;
+    border-left: 3px solid #d4af37;
+    padding-left: calc(0.85rem - 3px);
+  }
+  .vw-nav-item.is-active i {
+    color: #d4af37;
+  }
+  .vw-sidebar-divider {
+    height: 1px;
+    background: rgba(255, 255, 255, 0.08);
+    margin: 0.85rem 0.5rem;
+  }
+  .vw-nav-new {
+    color: rgba(255, 255, 255, 0.5);
+    font-size: 0.825rem;
+  }
+  .vw-nav-new:hover {
+    color: #d4af37;
+    background: rgba(212, 175, 55, 0.08);
+  }
+  .vw-nav-new i {
+    color: rgba(255, 255, 255, 0.35);
+  }
+  .vw-sidebar-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.55);
+    backdrop-filter: blur(2px);
+    z-index: 199;
+  }
+
+  /* ── Main Content Area ── */
+  .vw-main {
+    flex: 1;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    background: #f6f3eb;
+    min-width: 0;
+    width: 100%;
+  }
+  .vw-content-wrap {
+    width: 100%;
+    max-width: 100% !important;
+    margin: 0;
+    padding: 1.5rem 2.5rem 3rem !important;
+    box-sizing: border-box;
+    display: flex;
+    flex-direction: column;
+    min-height: 100%;
+  }
+
+  /* ── Breadcrumb ── */
+  .vw-breadcrumb {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    margin-bottom: 0.75rem;
+  }
+  .vw-sidebar-toggle {
+    display: none;
+    background: #ffffff;
+    border: 1px solid #e0dad0;
+    color: #555;
+    cursor: pointer;
+    padding: 0.4rem 0.6rem;
+    border-radius: 6px;
+    font-size: 0.9rem;
+  }
+  .vw-breadcrumb-link {
+    font-size: 0.8125rem;
+    font-weight: 500;
+    color: #71717a;
+    text-decoration: none;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+  }
+  .vw-breadcrumb-link:hover {
+    color: #18181b;
+  }
+
+  /* ── Folder Header ── */
+  .vw-folder-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding-bottom: 1.25rem;
+    margin-bottom: 1.25rem;
+    border-bottom: 1px solid #e7e0d3;
+    gap: 1rem;
+    width: 100%;
+    box-sizing: border-box;
+  }
+  .vw-folder-title-area {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+  }
+  .vw-folder-icon {
+    width: 48px;
+    height: 48px;
+    border-radius: 12px;
+    background: linear-gradient(135deg, rgba(212, 175, 55, 0.2), rgba(212, 175, 55, 0.08));
+    border: 1px solid rgba(212, 175, 55, 0.35);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #a9822f;
+    font-size: 1.35rem;
+    flex-shrink: 0;
+  }
+  .vw-folder-name {
+    font-size: 1.45rem;
+    font-weight: 700;
+    color: #18181b;
+    margin: 0;
+    line-height: 1.2;
+  }
+  .vw-folder-meta {
+    display: flex;
+    align-items: center;
+    gap: 0.45rem;
+    font-size: 0.8125rem;
+    color: #71717a;
+    margin-top: 0.25rem;
+    font-weight: 500;
+  }
+  .vw-folder-actions {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    flex-shrink: 0;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+  }
+  .vw-selection-bar {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.45rem;
+    background: #ffffff;
+    border: 1px solid #e0dad0;
+    padding: 0.25rem 0.45rem 0.25rem 0.85rem;
+    border-radius: 8px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+  }
+  .vw-selection-count {
+    font-size: 0.8125rem;
+    font-weight: 700;
+    color: #18181b;
+    margin-right: 0.25rem;
+    white-space: nowrap;
+  }
+  .vw-sel-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    padding: 0.42rem 0.75rem;
+    border-radius: 6px;
+    font-size: 0.8125rem;
+    font-weight: 600;
+    cursor: pointer;
+    border: 1px solid #e0dad0;
+    background: #fbf9f4;
+    color: #27272a;
+    transition: all 0.12s ease;
+  }
+  .vw-sel-btn:hover { background: #f4efe6; color: #000; }
+  .vw-sel-share:hover {
+    background: rgba(169, 130, 47, 0.12);
+    color: #8c6d23;
+    border-color: rgba(169, 130, 47, 0.35);
+  }
+  .vw-sel-download:hover {
+    background: rgba(37, 99, 235, 0.1);
+    color: #2563eb;
+    border-color: rgba(37, 99, 235, 0.3);
+  }
+  .vw-sel-delete { color: #dc2626; }
+  .vw-sel-delete:hover {
+    background: #fee2e2;
+    border-color: #fca5a5;
+    color: #b91c1c;
+  }
+  .vw-sel-cancel {
+    background: none;
+    border: none;
+    color: #71717a;
+    cursor: pointer;
+    padding: 0.35rem 0.45rem;
+    border-radius: 4px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.85rem;
+  }
+  .vw-sel-cancel:hover { color: #18181b; background: #f0ebe1; }
+  .vw-upload-btn {
+    background: #0b0f1a !important;
+    color: #ffffff !important;
+    border: 1px solid rgba(255, 255, 255, 0.1) !important;
+    padding: 0.55rem 1.15rem !important;
+    border-radius: 8px !important;
+    font-size: 0.8375rem !important;
+    font-weight: 600 !important;
+    display: inline-flex !important;
+    align-items: center !important;
+    gap: 0.45rem !important;
+    cursor: pointer !important;
+  }
+  .vw-folder-menu-wrap { position: relative; }
+  .vw-folder-menu-btn {
+    width: 38px;
+    height: 38px;
+    border-radius: 8px;
+    border: 1px solid #e0dad0;
+    background: #ffffff;
+    color: #52525b;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    font-size: 1.05rem;
+  }
+  .vw-folder-menu {
+    position: absolute;
+    right: 0;
+    top: calc(100% + 6px);
+    background: #ffffff;
+    border: 1px solid #e0dad0;
+    border-radius: 10px;
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.14);
+    z-index: 250;
+    min-width: 220px;
+    padding: 0.4rem 0;
+    overflow: hidden;
+  }
+  .vw-folder-menu-item {
+    display: flex;
+    align-items: center;
+    gap: 0.65rem;
+    padding: 0.65rem 1.1rem;
+    font-size: 0.8375rem;
+    font-weight: 500;
+    color: #27272a;
+    text-decoration: none;
+    background: none;
+    border: none;
+    width: 100%;
+    cursor: pointer;
+    text-align: left;
+  }
+  .vw-folder-menu-item:hover { background: #f4efe6; color: #000000; }
+  .vw-folder-menu-item i { width: 16px; text-align: center; color: #71717a; }
+
+  /* ── Section Title & Toolbar ── */
+  .vw-section-title {
+    font-size: 0.725rem;
+    font-weight: 700;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: #71717a;
+    margin-bottom: 0.75rem;
+  }
+  .vw-toolbar {
+    display: flex;
+    align-items: center;
+    gap: 0.85rem;
+    margin-bottom: 1.25rem;
+    width: 100%;
+    box-sizing: border-box;
+  }
+  .vw-search-wrap {
+    position: relative;
+    flex: 1;
+    min-width: 220px;
+  }
+  .vw-search-icon {
+    position: absolute;
+    left: 0.85rem;
+    top: 50%;
+    transform: translateY(-50%);
+    color: #a1a1aa;
+    font-size: 0.825rem;
+    pointer-events: none;
+  }
+  .vw-search-input {
+    width: 100%;
+    height: 40px;
+    padding: 0 0.875rem 0 2.35rem;
+    border: 1px solid #e0dad0;
+    border-radius: 8px;
+    background: #ffffff;
+    color: #18181b;
+    font-size: 0.8375rem;
+    outline: none;
+    box-sizing: border-box;
+  }
+  .vw-search-input:focus { border-color: #a9822f; }
+  .vw-filter-chips { display: flex; gap: 0.35rem; }
+  .vw-chip {
+    height: 40px;
+    padding: 0 1rem;
+    border-radius: 8px;
+    border: 1px solid #e0dad0;
+    background: #ffffff;
+    color: #52525b;
+    font-size: 0.8125rem;
+    font-weight: 500;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .vw-chip:hover { background: #f8f6f0; color: #18181b; }
+  .vw-chip.active { background: #0b0f1a; border-color: #0b0f1a; color: #ffffff; }
+  .vw-view-btns {
+    display: flex;
+    gap: 2px;
+    border: 1px solid #e0dad0;
+    border-radius: 8px;
+    background: #ffffff;
+    padding: 2px;
+    margin-left: auto;
+  }
+  .vw-view-btn {
+    width: 34px;
+    height: 34px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: none;
+    border: none;
+    border-radius: 6px;
+    color: #71717a;
+    cursor: pointer;
+    font-size: 0.85rem;
+  }
+  .vw-view-btn:hover { background: #f4efe6; color: #18181b; }
+  .vw-view-btn.active { background: #0b0f1a; color: #ffffff; }
+
+  /* ══════════════════════════════════════════════════════════════════════════
+     DOCUMENT GRID CARD COMPONENT (DEFAULT VIEW)
+     ========================================================================== */
+  .doc-grid-container {
+    display: grid !important;
+    grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)) !important;
+    gap: 16px !important;
+    width: 100% !important;
+    margin-bottom: 1rem !important;
+    box-sizing: border-box !important;
+  }
+
+  .doc-grid-card {
+    display: flex !important;
+    flex-direction: column !important;
+    background: #ffffff !important;
+    border: 1px solid #e2dcd0 !important;
+    border-radius: 12px !important;
+    padding: 10px !important;
+    height: 215px !important;
+    box-sizing: border-box !important;
+    position: relative !important;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.03) !important;
+    transition: all 0.18s cubic-bezier(0.16, 1, 0.3, 1) !important;
+    cursor: default !important;
+  }
+
+  .doc-grid-card:hover {
+    border-color: rgba(169, 130, 47, 0.5) !important;
+    box-shadow: 0 6px 18px rgba(0, 0, 0, 0.07) !important;
+    transform: translateY(-2px) !important;
+  }
+
+  /* 1. Top Bar (Checkbox & Menu) */
+  .doc-card-topbar {
+    display: flex !important;
+    align-items: center !important;
+    justify-content: space-between !important;
+    margin-bottom: 8px !important;
+    width: 100% !important;
+    flex-shrink: 0 !important;
+  }
+
+  .doc-card-check {
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+  }
+  .doc-card-check input[type="checkbox"] {
+    width: 17px !important;
+    height: 17px !important;
+    accent-color: #a9822f !important;
+    cursor: pointer !important;
+    margin: 0 !important;
+  }
+
+  .doc-card-menu-wrap {
+    position: relative !important;
+  }
+  .doc-card-menu-btn {
+    width: 28px !important;
+    height: 28px !important;
+    border-radius: 6px !important;
+    border: 1px solid transparent !important;
+    background: transparent !important;
+    color: #71717a !important;
+    cursor: pointer !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    font-size: 0.9rem !important;
+    transition: all 0.12s ease !important;
+  }
+  .doc-card-menu-btn:hover,
+  .doc-card-menu-btn.active {
+    background: #f4efe6 !important;
+    color: #18181b !important;
+    border-color: #e0dad0 !important;
+  }
+
+  /* 2. Preview Area */
+  .doc-card-preview {
+    width: 100% !important;
+    height: 110px !important;
+    border-radius: 8px !important;
+    overflow: hidden !important;
+    background: #fbf9f4 !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    margin-bottom: 8px !important;
+    border: 1px solid rgba(0, 0, 0, 0.04) !important;
+    cursor: pointer !important;
+    flex-shrink: 0 !important;
+  }
+
+  .doc-card-img {
+    width: 100% !important;
+    height: 100% !important;
+    object-fit: cover !important;
+    display: block !important;
+    border-radius: 8px !important;
+  }
+
+  .doc-card-icon-box {
+    width: 100% !important;
+    height: 100% !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    font-size: 2.75rem !important;
+    border-radius: 8px !important;
+  }
+
+  .doc-icon-pdf { background: #fee2e2 !important; color: #dc2626 !important; }
+  .doc-icon-word { background: #dbeafe !important; color: #2563eb !important; }
+  .doc-icon-gen { background: #f1f5f9 !important; color: #475569 !important; }
+
+  /* 3. Card Meta & Filename */
+  .doc-card-info {
+    display: flex !important;
+    flex-direction: column !important;
+    gap: 2px !important;
+    min-width: 0 !important;
+    cursor: pointer !important;
+    flex: 1 !important;
+    justify-content: center !important;
+  }
+  .doc-card-name {
+    font-size: 0.875rem !important;
+    font-weight: 600 !important;
+    color: #1e293b !important;
+    white-space: nowrap !important;
+    overflow: hidden !important;
+    text-overflow: ellipsis !important;
+    line-height: 1.3 !important;
+    transition: color 0.15s ease !important;
+  }
+  .doc-grid-card:hover .doc-card-name {
+    color: #a9822f !important;
+  }
+  .doc-card-meta {
+    font-size: 0.75rem !important;
+    color: #64748b !important;
+    font-weight: 400 !important;
+    white-space: nowrap !important;
+    overflow: hidden !important;
+    text-overflow: ellipsis !important;
+  }
+
+  /* ══════════════════════════════════════════════════════════════════════════
+     LIST VIEW (WHEN SWITCHED)
+     ========================================================================== */
+  .view-list .doc-grid-container {
+    display: flex !important;
+    flex-direction: column !important;
+    gap: 8px !important;
+  }
+  .view-list .doc-grid-card {
+    display: flex !important;
+    flex-direction: row !important;
+    align-items: center !important;
+    height: 70px !important;
+    padding: 0 1.25rem !important;
+  }
+  .view-list .doc-card-topbar {
+    width: auto !important;
+    margin: 0 !important;
+    display: contents !important;
+  }
+  .view-list .doc-card-check {
+    order: 1 !important;
+    margin-right: 0.85rem !important;
+  }
+  .view-list .doc-card-preview {
+    order: 2 !important;
+    width: 48px !important;
+    height: 48px !important;
+    margin: 0 1.15rem 0 0 !important;
+    border: none !important;
+  }
+  .view-list .doc-card-icon-box {
+    font-size: 1.35rem !important;
+  }
+  .view-list .doc-card-info {
+    order: 3 !important;
+    flex: 1 1 auto !important;
+  }
+  .view-list .doc-card-name {
+    font-size: 0.935rem !important;
+  }
+  .view-list .doc-card-menu-wrap {
+    order: 4 !important;
+    margin-left: auto !important;
+  }
+  .view-list .doc-card-menu-btn {
+    width: 34px !important;
+    height: 34px !important;
+  }
+
+  /* ── Dropdown Action Menu ── */
+  .doc-action-menu {
+    position: absolute !important;
+    right: 0 !important;
+    top: calc(100% + 4px) !important;
+    z-index: 300 !important;
+    background: #ffffff !important;
+    border: 1px solid #e0dad0 !important;
+    border-radius: 10px !important;
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.14) !important;
+    min-width: 190px !important;
+    padding: 0.4rem 0 !important;
+    overflow: hidden !important;
+  }
+  .doc-action-menu .doc-menu-item {
+    display: flex !important;
+    align-items: center !important;
+    gap: 0.65rem !important;
+    padding: 0.6rem 1rem !important;
+    font-size: 0.835rem !important;
+    font-weight: 500 !important;
+    color: #27272a !important;
+    text-decoration: none !important;
+    background: none !important;
+    border: none !important;
+    width: 100% !important;
+    cursor: pointer !important;
+    text-align: left !important;
+    box-sizing: border-box !important;
+  }
+  .doc-action-menu .doc-menu-item:hover {
+    background: #f4efe6 !important;
+    color: #000000 !important;
+  }
+  .doc-action-menu .doc-menu-item i {
+    width: 16px !important;
+    text-align: center !important;
+    color: #71717a !important;
+  }
+  .doc-action-menu .doc-menu-sep {
+    height: 1px !important;
+    background: #f0ebe1 !important;
+    margin: 0.35rem 0 !important;
+  }
+  .doc-action-menu .doc-menu-item-danger {
+    color: #dc2626 !important;
+  }
+  .doc-action-menu .doc-menu-item-danger:hover {
+    background: #fef2f2 !important;
+    color: #b91c1c !important;
+  }
+
+  /* Subfolders */
+  .vw-subfolder-group { margin-bottom: 1rem; width: 100%; }
+  .vw-subfolder-header {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    height: 44px;
+    padding: 0 1.15rem;
+    border-radius: 8px;
+    background: #ffffff;
+    border: 1px solid #e7e0d3;
+    cursor: pointer;
+    margin-bottom: 6px;
+    box-sizing: border-box;
+  }
+  .vw-subfolder-header:hover { background: #f8f6f0; }
+  .vw-subfolder-icon { color: #a9822f; }
+  .vw-subfolder-name { flex: 1; font-size: 0.875rem; font-weight: 600; color: #18181b; }
+  .vw-subfolder-count { font-size: 0.75rem; background: rgba(169, 130, 47, 0.12); color: #8c6d23; padding: 0.18rem 0.6rem; border-radius: 50px; font-weight: 600; }
+  .vw-chevron { color: #a1a1aa; font-size: 0.75rem; transition: transform 0.2s ease; }
+
+  /* Empty state */
+  .vw-empty {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    gap: 0.75rem;
+    padding: 4rem 2rem;
+    flex: 1;
+    background: #ffffff;
+    border: 1px dashed #d8cfc0;
+    border-radius: 14px;
+  }
+  .vw-empty-icon {
+    width: 60px;
+    height: 60px;
+    border-radius: 14px;
+    background: rgba(169, 130, 47, 0.12);
+    border: 1px solid rgba(169, 130, 47, 0.25);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #a9822f;
+    font-size: 1.6rem;
+  }
+
+  @media (max-width: 900px) {
+    .vw-sidebar {
+      position: fixed;
+      top: var(--nav-h, 60px);
+      left: 0;
+      height: calc(100vh - var(--nav-h, 60px));
+      transform: translateX(-100%);
+      box-shadow: 4px 0 24px rgba(0, 0, 0, 0.25);
+    }
+    .vw-sidebar.open { transform: translateX(0); }
+    .vw-sidebar-toggle { display: flex; }
+    .vw-content-wrap { padding: 1.25rem 1.25rem 2.5rem !important; }
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+{# ── Hidden delete forms ────────────────────────────────────────────────── #}
+{% for doc in vault.documents %}
+<form method="POST" action="{{ url_for('delete_document', vault_id=doc.vault_id if doc.vault_id else vault_id, doc_id=doc.doc_id) }}"
+      id="del-form-{{ doc.doc_id }}" style="display:none;">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+</form>
+{% endfor %}
+
+{# ── Hidden upload form (POST to manage route) — only used from inside a
+     specific folder now, since the Upload button is hidden on "All" ────── #}
+<form id="vw-upload-form" method="POST" enctype="multipart/form-data"
+      action="{% if vault_id != 'all' %}{{ url_for('manage_vault', vault_id=vault_id) }}{% endif %}" style="display:none;">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  <input type="file" id="vw-file-input" name="documents" multiple
+         accept=".pdf,.jpg,.jpeg,.png,.docx,.txt">
+</form>
+
+{# ══════════════════════════════════════════════════════════════════════════
+   WORKSPACE LAYOUT
+══════════════════════════════════════════════════════════════════════════ #}
+<div class="vw-workspace">
+
+  {# ── SIDEBAR ─────────────────────────────────────────────────────────── #}
+  <aside class="vw-sidebar" id="vwSidebar">
+    <div class="vw-sidebar-inner">
+      <div class="vw-sidebar-label">MY VAULT</div>
+
+      {# All Folders link #}
+      <a href="{{ url_for('dashboard') }}" class="vw-nav-item {% if vault_id == 'all' or not vault_id %}is-active{% endif %}">
+        <i class="fas fa-house"></i>
+        <span>All</span>
+      </a>
+
+      {# Each user folder #}
+      {% for v in all_vaults %}
+      <a href="{{ url_for('vault_view', vault_id=v.vault_id) }}"
+         class="vw-nav-item {% if v.vault_id == vault_id %}is-active{% endif %}">
+        <i class="fas fa-folder{% if v.vault_id == vault_id %}-open{% endif %}"></i>
+        <span>{{ v.vault_name }}</span>
+      </a>
+      {% endfor %}
+
+      <div class="vw-sidebar-divider"></div>
+
+      <a href="{{ url_for('create_vault') }}" class="vw-nav-item vw-nav-new">
+        <i class="fas fa-plus"></i>
+        <span>New Folder</span>
+      </a>
+    </div>
+  </aside>
+
+  {# Sidebar overlay for mobile #}
+  <div class="vw-sidebar-overlay hidden" id="vwSidebarOverlay" onclick="closeSidebar()"></div>
+
+  {# ── MAIN CONTENT ──────────────────────────────────────────────────────── #}
+  <main class="vw-main">
+    <div class="vw-content-wrap">
+
+      {# ── Folder Header ──────────────────────────────────────────────────── #}
+      <div class="vw-folder-header">
+        <div class="vw-folder-title-area">
+          <button type="button" class="vw-sidebar-toggle" id="vwSidebarToggle" onclick="toggleSidebar()" aria-label="Toggle sidebar">
+            <i class="fas fa-bars"></i>
+          </button>
+          <div class="vw-folder-icon"><i class="fas fa-folder-open"></i></div>
+          <div>
+            <h1 class="vw-folder-name">
+              <span>{{ vault.vault_name }}</span>
+              {% if vault_id != 'all' %}
+              <button type="button" class="vw-folder-rename-inline-btn" onclick="openRenameFolderModal()" title="Rename folder">
+                <i class="fas fa-pen"></i>
+              </button>
+              {% endif %}
+            </h1>
+            <div class="vw-folder-meta">
+              <span>{{ vault.documents|length }} document{{ '' if vault.documents|length == 1 else 's' }}</span>
+            </div>
+          </div>
+        </div>
+        <div class="vw-folder-actions">
+          {# Selection Action Bar (Automatically appears when files are checked) #}
+          <div class="vw-selection-bar hidden" id="vwSelectionBar">
+            <span class="vw-selection-count" id="vwSelectionCount">0 selected</span>
+            <button type="button" class="btn vw-sel-btn vw-sel-share" onclick="openShareWizard()" title="Share selected files">
+              <i class="fas fa-share-nodes"></i> <span>Share</span>
+            </button>
+            <button type="button" class="btn vw-sel-btn vw-sel-download" onclick="downloadSelectedDocs()" title="Download selected files">
+              <i class="fas fa-download"></i> <span>Download</span>
+            </button>
+            <button type="button" class="btn vw-sel-btn vw-sel-delete" onclick="deleteSelectedDocs()" title="Delete selected files">
+              <i class="fas fa-trash"></i> <span>Delete</span>
+            </button>
+            <button type="button" class="vw-sel-cancel" onclick="clearSelection()" title="Deselect all">
+              <i class="fas fa-xmark"></i>
+            </button>
+          </div>
+
+          {% if vault_id != 'all' %}
+          {# Primary action: Upload — only shown inside an actual folder #}
+          <button type="button" class="btn btn-primary vw-upload-btn" id="vwUploadBtn" onclick="triggerUpload()">
+            <i class="fas fa-plus"></i> Upload Document
+          </button>
+          {# Three-dot folder menu — only relevant inside an actual folder #}
+          <div class="vw-folder-menu-wrap">
+            <button type="button" class="vw-folder-menu-btn" id="vwFolderMenuBtn"
+                    onclick="toggleFolderMenu(event)" aria-haspopup="true" aria-expanded="false"
+                    title="Folder options">
+              <i class="fas fa-ellipsis-vertical"></i>
+            </button>
+            <div class="vw-folder-menu hidden" id="vwFolderMenu" role="menu">
+              <a class="vw-folder-menu-item" role="menuitem"
+                 href="{{ url_for('download_combined_pdf', vault_id=vault_id) }}">
+                <i class="fas fa-file-pdf"></i> Download All as PDF
+              </a>
+              <a class="vw-folder-menu-item" role="menuitem"
+                 href="{{ url_for('download_qr', vault_id=vault_id) }}">
+                <i class="fas fa-qrcode"></i> Download Folder QR
+              </a>
+              <a class="vw-folder-menu-item" role="menuitem"
+                 href="{{ url_for('activity_page', tab='share') }}">
+                <i class="fas fa-link"></i> Shared Links
+              </a>
+              <div class="vw-folder-menu-divider"></div>
+              <button type="button" class="vw-folder-menu-item" role="menuitem"
+                      onclick="closeFolderMenu(); openRenameFolderModal();">
+                <i class="fas fa-pen"></i> Rename Folder
+              </button>
+              <button type="button" class="vw-folder-menu-item vw-folder-menu-item-danger" role="menuitem"
+                      onclick="closeFolderMenu(); confirmDelete('{{ vault.vault_name }}', 'del-current-vault-form', 'vault');">
+                <i class="fas fa-trash"></i> Delete Folder
+              </button>
+            </div>
+          </div>
+          {% endif %}
+        </div>
+      </div>
+
+      {# ── Section title + toolbar ────────────────────────────────────────── #}
+      <div class="vw-section-title">Documents</div>
+
+      <div class="vw-toolbar">
+        <div class="vw-search-wrap">
+          <i class="fas fa-search vw-search-icon"></i>
+          <input type="text" id="searchInput" placeholder="Search documents..." class="vw-search-input"/>
+        </div>
+        <div class="vw-filter-chips" id="vwFilterChips">
+          <button type="button" class="vw-chip active" data-filter="all">All</button>
+          <button type="button" class="vw-chip" data-filter="pdf">PDF</button>
+          <button type="button" class="vw-chip" data-filter="image">Images</button>
+        </div>
+        <div class="vw-view-btns">
+          <button type="button" class="vw-view-btn active" id="btnGridView" onclick="setVaultView('grid')" title="Grid view">
+            <i class="fas fa-table-cells"></i>
+          </button>
+          <button type="button" class="vw-view-btn" id="btnListView" onclick="setVaultView('list')" title="List view">
+            <i class="fas fa-list"></i>
+          </button>
+        </div>
+      </div>
+
+      {# ── Document Container ──────────────────────────────────────────────── #}
+      {% if vault.documents %}
+
+      {# Group docs into sub-folders and root #}
+      {% set root_docs = [] %}
+      {% set doc_folders = {} %}
+      {% for doc in vault.documents %}
+        {% if doc.folder_name %}
+          {% if doc.folder_name not in doc_folders %}
+            {% if doc_folders.update({doc.folder_name: [doc]}) %}{% endif %}
+          {% else %}
+            {% if doc_folders[doc.folder_name].append(doc) %}{% endif %}
+          {% endif %}
+        {% else %}
+          {% if root_docs.append(doc) %}{% endif %}
+        {% endif %}
+      {% endfor %}
+
+      <div id="vault-items-wrapper" class="view-grid">
+
+        {# Sub-folders if any exist #}
+        {% for folder_name, folder_docs in doc_folders.items() %}
+        <div class="vw-subfolder-group" data-folder-name="{{ folder_name }}">
+          <div class="vw-subfolder-header" onclick="toggleFolderCollapse('sf-{{ loop.index }}')">
+            <input type="checkbox" class="folder-select-checkbox"
+                   data-folder-name="{{ folder_name }}"
+                   onclick="event.stopPropagation(); selectFolderDocs(this, 'sf-{{ loop.index }}')">
+            <i class="fas fa-folder vw-subfolder-icon"></i>
+            <span class="vw-subfolder-name">{{ folder_name }}</span>
+            <span class="vw-subfolder-count">{{ folder_docs|length }} file{{ '' if folder_docs|length == 1 else 's' }}</span>
+            <i class="fas fa-chevron-down vw-chevron" id="chevron-sf-{{ loop.index }}"></i>
+          </div>
+          <div class="doc-grid-container" id="sf-{{ loop.index }}">
+            {% for doc in folder_docs %}
+            <div class="doc-grid-card" data-type="{{ doc.file_type }}" data-name="{{ doc.filename.lower() }}">
+              
+              <!-- Top Row: Checkbox & Menu -->
+              <div class="doc-card-topbar">
+                <div class="doc-card-check">
+                  <input type="checkbox" class="doc-select-checkbox"
+                         data-doc-id="{{ doc.doc_id }}" data-vault-id="{{ doc.vault_id if doc.vault_id else vault_id }}" data-folder="{{ folder_name }}"
+                         onclick="event.stopPropagation(); updateSelectionCount();"
+                         aria-label="Select {{ doc.filename }}">
+                </div>
+                <div class="doc-card-menu-wrap">
+                  <button type="button" class="doc-card-menu-btn" onclick="toggleDocMenu(event, 'menu-{{ doc.doc_id }}')" aria-haspopup="true" aria-expanded="false" title="More options">
+                    <i class="fas fa-ellipsis-vertical"></i>
+                  </button>
+                  <div class="doc-action-menu hidden" id="menu-{{ doc.doc_id }}" role="menu">
+                    <button class="doc-menu-item" role="menuitem" onclick="closeAllDocMenus(); openPreviewModal('{{ url_for('serve_file', vault_id=doc.vault_id if doc.vault_id else vault_id, doc_id=doc.doc_id) }}','{{ url_for('download_file', vault_id=doc.vault_id if doc.vault_id else vault_id, doc_id=doc.doc_id) }}','{{ doc.filename }}','{{ doc.file_type }}')">
+                      <i class="fas fa-eye"></i> Open
+                    </button>
+                    <a class="doc-menu-item" role="menuitem" href="{{ url_for('download_file', vault_id=doc.vault_id if doc.vault_id else vault_id, doc_id=doc.doc_id) }}">
+                      <i class="fas fa-download"></i> Download
+                    </a>
+                    <button class="doc-menu-item" role="menuitem" onclick="closeAllDocMenus(); shareSingleDoc('{{ doc.doc_id }}','{{ folder_name }}',false)">
+                      <i class="fas fa-arrow-up-right-from-square"></i> Share
+                    </button>
+                    <button class="doc-menu-item" role="menuitem" onclick="closeAllDocMenus(); shareSingleDoc('{{ doc.doc_id }}','{{ folder_name }}',true)">
+                      <i class="fas fa-qrcode"></i> Share via QR
+                    </button>
+                    <div class="doc-menu-sep"></div>
+                    <button class="doc-menu-item doc-menu-item-danger" role="menuitem" onclick="closeAllDocMenus(); confirmDelete('{{ doc.filename }}','del-form-{{ doc.doc_id }}')">
+                      <i class="fas fa-trash"></i> Delete
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Preview Area (Original Image or PDF Icon) -->
+              <div class="doc-card-preview" role="button" tabindex="0"
+                   onclick="openPreviewModal('{{ url_for('serve_file', vault_id=doc.vault_id if doc.vault_id else vault_id, doc_id=doc.doc_id) }}','{{ url_for('download_file', vault_id=doc.vault_id if doc.vault_id else vault_id, doc_id=doc.doc_id) }}','{{ doc.filename }}','{{ doc.file_type }}')">
+                {% if doc.file_type in ['jpg','jpeg','png'] %}
+                  <img src="{{ url_for('serve_file', vault_id=doc.vault_id if doc.vault_id else vault_id, doc_id=doc.doc_id) }}"
+                       class="doc-card-img" alt="{{ doc.filename }}" loading="lazy">
+                {% elif doc.file_type == 'pdf' %}
+                  <div class="doc-card-icon-box doc-icon-pdf">
+                    <svg viewBox="0 0 64 64" width="54" height="54" fill="none">
+                      <path d="M38 4H16C12.6863 4 10 6.68629 10 10V54C10 57.3137 12.6863 60 16 60H48C51.3137 60 54 57.3137 54 54V20L38 4Z" fill="#FEE2E2" stroke="#EF4444" stroke-width="2"/>
+                      <path d="M38 4V20H54" fill="#FECACA" stroke="#EF4444" stroke-width="2"/>
+                      <rect x="14" y="34" width="36" height="18" rx="4" fill="#DC2626"/>
+                      <text x="32" y="47" text-anchor="middle" font-size="11" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-weight="800" fill="#FFFFFF">PDF</text>
+                    </svg>
+                  </div>
+                {% elif doc.file_type in ['doc','docx'] %}
+                  <div class="doc-card-icon-box doc-icon-word">
+                    <svg viewBox="0 0 64 64" width="54" height="54" fill="none">
+                      <path d="M38 4H16C12.6863 4 10 6.68629 10 10V54C10 57.3137 12.6863 60 16 60H48C51.3137 60 54 57.3137 54 54V20L38 4Z" fill="#DBEAFE" stroke="#3B82F6" stroke-width="2"/>
+                      <path d="M38 4V20H54" fill="#BFDBFE" stroke="#3B82F6" stroke-width="2"/>
+                      <rect x="14" y="34" width="36" height="18" rx="4" fill="#2563EB"/>
+                      <text x="32" y="47" text-anchor="middle" font-size="11" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-weight="800" fill="#FFFFFF">DOC</text>
+                    </svg>
+                  </div>
+                {% else %}
+                  <div class="doc-card-icon-box doc-icon-gen">
+                    <svg viewBox="0 0 64 64" width="54" height="54" fill="none">
+                      <path d="M38 4H16C12.6863 4 10 6.68629 10 10V54C10 57.3137 12.6863 60 16 60H48C51.3137 60 54 57.3137 54 54V20L38 4Z" fill="#F1F5F9" stroke="#64748B" stroke-width="2"/>
+                      <path d="M38 4V20H54" fill="#E2E8F0" stroke="#64748B" stroke-width="2"/>
+                      <rect x="14" y="34" width="36" height="18" rx="4" fill="#475569"/>
+                      <text x="32" y="47" text-anchor="middle" font-size="11" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-weight="800" fill="#FFFFFF">FILE</text>
+                    </svg>
+                  </div>
+                {% endif %}
+              </div>
+
+              <!-- Document Info -->
+              <div class="doc-card-info" role="button" tabindex="0"
+                   onclick="openPreviewModal('{{ url_for('serve_file', vault_id=doc.vault_id if doc.vault_id else vault_id, doc_id=doc.doc_id) }}','{{ url_for('download_file', vault_id=doc.vault_id if doc.vault_id else vault_id, doc_id=doc.doc_id) }}','{{ doc.filename }}','{{ doc.file_type }}')"
+                   onkeydown="if(event.key==='Enter'){this.click()}">
+                <div class="doc-card-name" title="{{ doc.filename }}">{{ doc.filename }}</div>
+                <div class="doc-card-meta">{{ doc.file_type.upper() }} · {{ (doc.file_size/1024)|round(1) }} KB · {{ doc.upload_date|friendly_date }}</div>
+              </div>
+
+            </div>
+            {% endfor %}
+          </div>
+        </div>
+        {% endfor %}
+
+        {# Root (unsorted) documents list #}
+        {% if root_docs %}
+        <div class="doc-grid-container" id="root-doc-list">
+          {% for doc in root_docs %}
+          <div class="doc-grid-card" data-type="{{ doc.file_type }}" data-name="{{ doc.filename.lower() }}">
+            
+            <!-- Top Row: Checkbox & Menu -->
+            <div class="doc-card-topbar">
+              <div class="doc-card-check">
+                <input type="checkbox" class="doc-select-checkbox"
+                       data-doc-id="{{ doc.doc_id }}" data-vault-id="{{ doc.vault_id if doc.vault_id else vault_id }}" data-folder=""
+                       onclick="event.stopPropagation(); updateSelectionCount();"
+                       aria-label="Select {{ doc.filename }}">
+              </div>
+              <div class="doc-card-menu-wrap">
+                <button type="button" class="doc-card-menu-btn" onclick="toggleDocMenu(event, 'menu-{{ doc.doc_id }}')" aria-haspopup="true" aria-expanded="false" title="More options">
+                  <i class="fas fa-ellipsis-vertical"></i>
+                </button>
+                <div class="doc-action-menu hidden" id="menu-{{ doc.doc_id }}" role="menu">
+                  <button class="doc-menu-item" role="menuitem" onclick="closeAllDocMenus(); openPreviewModal('{{ url_for('serve_file', vault_id=doc.vault_id if doc.vault_id else vault_id, doc_id=doc.doc_id) }}','{{ url_for('download_file', vault_id=doc.vault_id if doc.vault_id else vault_id, doc_id=doc.doc_id) }}','{{ doc.filename }}','{{ doc.file_type }}')">
+                    <i class="fas fa-eye"></i> Open
+                  </button>
+                  <a class="doc-menu-item" role="menuitem" href="{{ url_for('download_file', vault_id=doc.vault_id if doc.vault_id else vault_id, doc_id=doc.doc_id) }}">
+                    <i class="fas fa-download"></i> Download
+                  </a>
+                  <button class="doc-menu-item" role="menuitem" onclick="closeAllDocMenus(); shareSingleDoc('{{ doc.doc_id }}','',false)">
+                    <i class="fas fa-arrow-up-right-from-square"></i> Share
+                  </button>
+                  <button class="doc-menu-item" role="menuitem" onclick="closeAllDocMenus(); shareSingleDoc('{{ doc.doc_id }}','',true)">
+                    <i class="fas fa-qrcode"></i> Share via QR
+                  </button>
+                  <div class="doc-menu-sep"></div>
+                  <button class="doc-menu-item doc-menu-item-danger" role="menuitem" onclick="closeAllDocMenus(); confirmDelete('{{ doc.filename }}','del-form-{{ doc.doc_id }}')">
+                    <i class="fas fa-trash"></i> Delete
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            <!-- Preview Area (Original Image or PDF Icon) -->
+            <div class="doc-card-preview" role="button" tabindex="0"
+                 onclick="openPreviewModal('{{ url_for('serve_file', vault_id=doc.vault_id if doc.vault_id else vault_id, doc_id=doc.doc_id) }}','{{ url_for('download_file', vault_id=doc.vault_id if doc.vault_id else vault_id, doc_id=doc.doc_id) }}','{{ doc.filename }}','{{ doc.file_type }}')">
+              {% if doc.file_type in ['jpg','jpeg','png'] %}
+                <img src="{{ url_for('serve_file', vault_id=doc.vault_id if doc.vault_id else vault_id, doc_id=doc.doc_id) }}"
+                     class="doc-card-img" alt="{{ doc.filename }}" loading="lazy">
+              {% elif doc.file_type == 'pdf' %}
+                <div class="doc-card-icon-box doc-icon-pdf">
+                  <svg viewBox="0 0 64 64" width="54" height="54" fill="none">
+                    <path d="M38 4H16C12.6863 4 10 6.68629 10 10V54C10 57.3137 12.6863 60 16 60H48C51.3137 60 54 57.3137 54 54V20L38 4Z" fill="#FEE2E2" stroke="#EF4444" stroke-width="2"/>
+                    <path d="M38 4V20H54" fill="#FECACA" stroke="#EF4444" stroke-width="2"/>
+                    <rect x="14" y="34" width="36" height="18" rx="4" fill="#DC2626"/>
+                    <text x="32" y="47" text-anchor="middle" font-size="11" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-weight="800" fill="#FFFFFF">PDF</text>
+                  </svg>
+                </div>
+              {% elif doc.file_type in ['doc','docx'] %}
+                <div class="doc-card-icon-box doc-icon-word">
+                  <svg viewBox="0 0 64 64" width="54" height="54" fill="none">
+                    <path d="M38 4H16C12.6863 4 10 6.68629 10 10V54C10 57.3137 12.6863 60 16 60H48C51.3137 60 54 57.3137 54 54V20L38 4Z" fill="#DBEAFE" stroke="#3B82F6" stroke-width="2"/>
+                    <path d="M38 4V20H54" fill="#BFDBFE" stroke="#3B82F6" stroke-width="2"/>
+                    <rect x="14" y="34" width="36" height="18" rx="4" fill="#2563EB"/>
+                    <text x="32" y="47" text-anchor="middle" font-size="11" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-weight="800" fill="#FFFFFF">DOC</text>
+                  </svg>
+                </div>
+              {% else %}
+                <div class="doc-card-icon-box doc-icon-gen">
+                  <svg viewBox="0 0 64 64" width="54" height="54" fill="none">
+                    <path d="M38 4H16C12.6863 4 10 6.68629 10 10V54C10 57.3137 12.6863 60 16 60H48C51.3137 60 54 57.3137 54 54V20L38 4Z" fill="#F1F5F9" stroke="#64748B" stroke-width="2"/>
+                    <path d="M38 4V20H54" fill="#E2E8F0" stroke="#64748B" stroke-width="2"/>
+                    <rect x="14" y="34" width="36" height="18" rx="4" fill="#475569"/>
+                    <text x="32" y="47" text-anchor="middle" font-size="11" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-weight="800" fill="#FFFFFF">FILE</text>
+                  </svg>
+                </div>
+              {% endif %}
+            </div>
+
+            <!-- Document Info -->
+            <div class="doc-card-info" role="button" tabindex="0"
+                 onclick="openPreviewModal('{{ url_for('serve_file', vault_id=doc.vault_id if doc.vault_id else vault_id, doc_id=doc.doc_id) }}','{{ url_for('download_file', vault_id=doc.vault_id if doc.vault_id else vault_id, doc_id=doc.doc_id) }}','{{ doc.filename }}','{{ doc.file_type }}')"
+                 onkeydown="if(event.key==='Enter'){this.click()}">
+              <div class="doc-card-name" title="{{ doc.filename }}">{{ doc.filename }}</div>
+              <div class="doc-card-meta">{{ doc.file_type.upper() }} · {{ (doc.file_size/1024)|round(1) }} KB · {{ doc.upload_date|friendly_date }}</div>
+            </div>
+
+          </div>
+          {% endfor %}
+        </div>
+        {% endif %}
+
+      </div>{# /vault-items-wrapper #}
+
+      {# ── JS-driven "no results for this filter/search" state (hidden by default) ── #}
+      <div class="vw-empty hidden" id="vw-filter-empty">
+        <div class="vw-empty-icon"><i class="fas fa-magnifying-glass"></i></div>
+        <h3>No documents match</h3>
+        <p>Try a different search term or switch back to "All".</p>
+      </div>
+
+      {% else %}
+      {# ── Empty state ─────────────────────────────────────────────────────── #}
+      <div class="vw-empty">
+        <div class="vw-empty-icon"><i class="fas fa-folder-open"></i></div>
+        {% if vault_id != 'all' %}
+        <h3>This folder is empty</h3>
+        <p>Upload your first document to keep it safely stored here.</p>
+        <button type="button" class="btn btn-primary" onclick="triggerUpload()">
+          <i class="fas fa-plus"></i> Upload Document
+        </button>
+        {% else %}
+        <h3>No documents yet</h3>
+        <p>Open a folder to upload your first document there.</p>
+        {% endif %}
+      </div>
+      {% endif %}
+
+    </div>{# /vw-content-wrap #}
+  </main>{# /vw-main #}
+</div>{# /vw-workspace #}
+
+{# ── Share Wizard ─────────────────────────────────────────────────────────── #}
+{% include "components/share_wizard.html" %}
+
+{# ── Document Preview Modal ──────────────────────────────────────────────── #}
+<div class="share-modal-overlay hidden" id="previewModal" onclick="if(event.target===this)closePreviewModal()">
+  <div class="preview-modal">
+    <div class="preview-modal-header">
+      <div class="preview-modal-filename" id="previewFilename"></div>
+      <div class="preview-modal-actions">
+        <a id="previewDownloadBtn" href="#" class="btn btn-sm btn-outline" title="Download">
+          <i class="fas fa-download"></i>
+        </a>
+        <a id="previewOpenBtn" href="#" target="_blank" class="btn btn-sm btn-outline" title="Open in new tab">
+          <i class="fas fa-up-right-from-square"></i>
+        </a>
+        <button type="button" class="share-modal-close" onclick="closePreviewModal()" title="Close" style="position:static;">
+          <i class="fas fa-xmark"></i>
+        </button>
+      </div>
+    </div>
+    <div class="preview-modal-body">
+      <iframe id="previewFrame" class="preview-frame hidden" title="Document preview"></iframe>
+      <img id="previewImage" class="preview-image hidden" alt="Document preview" />
+    </div>
+  </div>
+</div>
+
+{% if vault_id != 'all' %}
+{# ── Hidden Delete Folder Form ──────────────────────────────────── #}
+<form method="POST" action="{{ url_for('delete_vault', vault_id=vault_id) }}"
+      id="del-current-vault-form" style="display:none;">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+</form>
+
+{# ── Rename Folder Modal ────────────────────────────────────────── #}
+<div class="modal-overlay hidden" id="renameFolderModal" onclick="if(event.target===this)closeRenameFolderModal()">
+  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="renameFolderModalTitle">
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:1.15rem;">
+      <h3 id="renameFolderModalTitle" style="margin:0; font-size:1.15rem; font-weight:700;">Rename Folder</h3>
+      <button type="button" onclick="closeRenameFolderModal()" title="Close" style="font-size:1.2rem; cursor:pointer; background:none; border:none; color:var(--ink-soft,#71717a); line-height:1;">&times;</button>
+    </div>
+    <form method="POST" action="{{ url_for('rename_vault', vault_id=vault_id) }}" id="renameFolderForm">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <div style="margin-bottom:1.35rem;">
+        <label for="renameFolderInput" style="display:block; font-size:0.85rem; font-weight:600; color:var(--ink-soft,#71717a); margin-bottom:0.45rem;">Folder Name</label>
+        <input type="text" name="vault_name" id="renameFolderInput" class="form-control"
+               value="{{ vault.vault_name }}" required maxlength="60"
+               style="width:100%; box-sizing:border-box; padding:0.65rem 0.9rem; border-radius:8px; border:1px solid var(--border,#e0dad0); font-size:0.95rem;">
+      </div>
+      <div style="display:flex; justify-content:flex-end; gap:0.75rem;">
+        <button type="button" class="btn btn-outline" onclick="closeRenameFolderModal()">Cancel</button>
+        <button type="submit" class="btn btn-primary"><i class="fas fa-check"></i> Save Changes</button>
+      </div>
+    </form>
+  </div>
+</div>
+{% endif %}
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+/* ══════════════════════════════════════════════════════════
+   VAULT WORKSPACE — JavaScript
+══════════════════════════════════════════════════════════ */
+
+/* ── View toggle (grid / list) ─────────────────────────── */
+function setVaultView(view) {
+  const wrapper = document.getElementById('vault-items-wrapper');
+  if (!wrapper) return;
+  const lsKey = 'vaultView_{{ vault_id }}';
+  wrapper.classList.toggle('view-grid', view === 'grid');
+  wrapper.classList.toggle('view-list', view === 'list');
+  document.getElementById('btnGridView').classList.toggle('active', view === 'grid');
+  document.getElementById('btnListView').classList.toggle('active', view === 'list');
+  localStorage.setItem(lsKey, view);
+}
+
+/* ── Sidebar toggle (mobile) ──────────────────────────── */
+function toggleSidebar() {
+  const sidebar = document.getElementById('vwSidebar');
+  const overlay = document.getElementById('vwSidebarOverlay');
+  sidebar.classList.toggle('open');
+  overlay.classList.toggle('hidden');
+}
+function closeSidebar() {
+  document.getElementById('vwSidebar').classList.remove('open');
+  document.getElementById('vwSidebarOverlay').classList.add('hidden');
+}
+
+/* ── Rename Folder modal helpers ──────────────────────── */
+function openRenameFolderModal() {
+  const m = document.getElementById('renameFolderModal');
+  if (m) {
+    m.classList.remove('hidden');
+    const inp = document.getElementById('renameFolderInput');
+    if (inp) {
+      setTimeout(() => {
+        inp.focus();
+        inp.select();
+      }, 50);
+    }
+  }
+}
+function closeRenameFolderModal() {
+  const m = document.getElementById('renameFolderModal');
+  if (m) m.classList.add('hidden');
+}
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape') closeRenameFolderModal();
+});
+
+/* ── Folder three-dot menu ────────────────────────────── */
+function toggleFolderMenu(event) {
+  event.stopPropagation();
+  const menu = document.getElementById('vwFolderMenu');
+  const btn  = document.getElementById('vwFolderMenuBtn');
+  const open = !menu.classList.contains('hidden');
+  menu.classList.toggle('hidden', open);
+  btn.setAttribute('aria-expanded', !open);
+}
+function closeFolderMenu() {
+  const menu = document.getElementById('vwFolderMenu');
+  const btn  = document.getElementById('vwFolderMenuBtn');
+  if (menu) menu.classList.add('hidden');
+  if (btn) btn.setAttribute('aria-expanded', 'false');
+}
+document.addEventListener('click', e => {
+  if (!e.target.closest('.vw-folder-menu-wrap')) closeFolderMenu();
+});
+
+/* ── Sub-folder collapse ──────────────────────────────── */
+function toggleFolderCollapse(folderId) {
+  const body = document.getElementById(folderId);
+  const chevron = document.getElementById('chevron-' + folderId);
+  if (body) {
+    const hidden = body.classList.toggle('hidden');
+    if (chevron) chevron.style.transform = hidden ? 'rotate(-90deg)' : 'rotate(0deg)';
+  }
+}
+function selectFolderDocs(folderCheckbox, folderBodyId) {
+  const body = document.getElementById(folderBodyId);
+  if (!body) return;
+  body.querySelectorAll('.doc-select-checkbox').forEach(cb => {
+    cb.checked = folderCheckbox.checked;
+  });
+  updateSelectionCount();
+}
+
+/* ── Selection count / Action bar state ─────────────────── */
+function updateSelectionCount() {
+  const checked = document.querySelectorAll('.doc-select-checkbox:checked');
+  const count = checked.length;
+  const bar = document.getElementById('vwSelectionBar');
+  const countSpan = document.getElementById('vwSelectionCount');
+
+  if (bar) {
+    if (count > 0) {
+      bar.classList.remove('hidden');
+      if (countSpan) countSpan.textContent = `${count} selected`;
+    } else {
+      bar.classList.add('hidden');
+    }
+  }
+
+  // Update folder parent checkboxes indeterminate state
+  document.querySelectorAll('.vw-subfolder-group').forEach(group => {
+    const parentCb = group.querySelector('.folder-select-checkbox');
+    const childCbs = group.querySelectorAll('.doc-select-checkbox');
+    if (parentCb && childCbs.length > 0) {
+      const all  = [...childCbs].every(cb => cb.checked);
+      const some = [...childCbs].some(cb => cb.checked);
+      parentCb.checked       = all;
+      parentCb.indeterminate = some && !all;
+    }
+  });
+}
+
+function clearSelection() {
+  document.querySelectorAll('.doc-select-checkbox, .folder-select-checkbox').forEach(cb => {
+    cb.checked = false;
+    cb.indeterminate = false;
+  });
+  updateSelectionCount();
+}
+
+function downloadSelectedDocs() {
+  const checked = document.querySelectorAll('.doc-select-checkbox:checked');
+  if (checked.length === 0) return;
+  if (checked.length === 1) {
+    const docId = checked[0].dataset.docId;
+    window.location.href = `/vault/{{ vault_id }}/download/${docId}`;
+  } else {
+    checked.forEach((cb, idx) => {
+      const docId = cb.dataset.docId;
+      setTimeout(() => {
+        const iframe = document.createElement('iframe');
+        iframe.style.display = 'none';
+        iframe.src = `/vault/{{ vault_id }}/download/${docId}`;
+        document.body.appendChild(iframe);
+        setTimeout(() => iframe.remove(), 60000);
+      }, idx * 350);
+    });
+  }
+}
+
+function deleteSelectedDocs() {
+  const checked = document.querySelectorAll('.doc-select-checkbox:checked');
+  if (checked.length === 0) return;
+  const count = checked.length;
+  const msg = count === 1 ? 'Are you sure you want to delete the selected document?' : `Are you sure you want to delete all ${count} selected documents?`;
+  if (!confirm(msg)) return;
+
+  if (count === 1) {
+    const docId = checked[0].dataset.docId;
+    const form = document.getElementById('del-form-' + docId);
+    if (form) form.submit();
+  } else {
+    const csrf = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '';
+    const promises = [...checked].map(cb => {
+      const docId = cb.dataset.docId;
+      const formData = new FormData();
+      formData.append('csrf_token', csrf);
+      return fetch(`/vault/{{ vault_id }}/delete/${docId}`, {
+        method: 'POST',
+        headers: { 'X-CSRFToken': csrf },
+        body: formData
+      });
+    });
+    Promise.all(promises).then(() => {
+      window.location.reload();
+    }).catch(() => {
+      window.location.reload();
+    });
+  }
+}
+
+/* ── Document ⋮ menus ─────────────────────────────────── */
+function closeAllDocMenus() {
+  document.querySelectorAll('.doc-action-menu').forEach(m => m.classList.add('hidden'));
+  document.querySelectorAll('.doc-card-menu-btn').forEach(b => {
+    b.classList.remove('active');
+    b.setAttribute('aria-expanded', 'false');
+  });
+}
+function toggleDocMenu(event, menuId) {
+  event.stopPropagation();
+  const menu = document.getElementById(menuId);
+  if (!menu) return;
+  const isOpen = !menu.classList.contains('hidden');
+  closeAllDocMenus();
+  if (!isOpen) {
+    menu.classList.remove('hidden');
+    event.currentTarget.classList.add('active');
+    event.currentTarget.setAttribute('aria-expanded', 'true');
+  }
+}
+document.addEventListener('click', e => {
+  if (!e.target.closest('.doc-card-menu-wrap')) closeAllDocMenus();
+});
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape') { closeAllDocMenus(); closePreviewModal(); closeSidebar(); closeFolderMenu(); }
+});
+
+/* ── Upload trigger ────────────────────────────────────── */
+function triggerUpload() {
+  document.getElementById('vw-file-input').click();
+}
+document.addEventListener('DOMContentLoaded', () => {
+  const fileInput = document.getElementById('vw-file-input');
+  if (fileInput) {
+    fileInput.addEventListener('change', () => {
+      if (fileInput.files.length > 0) {
+        document.getElementById('vw-upload-form').submit();
+      }
+    });
+  }
+  // Restore saved view preference
+  const lsKey = 'vaultView_{{ vault_id }}';
+  const saved = localStorage.getItem(lsKey) || 'grid';
+  setVaultView(saved);
+});
+
+/* ── Share single doc from ⋮ menu ──────────────────────── */
+function shareSingleDoc(docId, folderName, showQrFirst) {
+  document.querySelectorAll('.doc-select-checkbox, .folder-select-checkbox').forEach(cb => {
+    cb.checked = false; cb.indeterminate = false;
+  });
+  const target = document.querySelector(`.doc-select-checkbox[data-doc-id="${docId}"]`);
+  if (target) target.checked = true;
+  updateSelectionCount();
+  openShareWizard(!!showQrFirst);
+}
+
+/* ── Share Wizard ──────────────────────────────────────── */
+let wizardMethod = 'public';
+let wizardShowQrOnResult = false;
+
+function openShareWizard(showQrFirst) {
+  const count = document.querySelectorAll('.doc-select-checkbox:checked').length;
+  if (count === 0) { showToast('Select one or more documents first, then tap Share.', 'info'); return; }
+  wizardShowQrOnResult = !!showQrFirst;
+  document.getElementById('wizardSelectedSummaryText').innerHTML =
+    `<strong>${count}</strong> document${count === 1 ? '' : 's'} selected`;
+  wizardMethod = 'public';
+  selectWizardMethod('public');
+  document.getElementById('wizard_password').value = '';
+  document.getElementById('wizard_expiry_preset').value = '7';
+  document.getElementById('wizard_expiry_custom').value = '';
+  document.getElementById('wizard_expiry_custom').classList.add('hidden');
+  document.getElementById('wizard_view_limit').value = '';
+  document.getElementById('wizard_allow_download').checked = true;
+  document.getElementById('wizard_allow_printing').checked = true;
+  document.getElementById('wizardAdvancedPanel').classList.remove('expanded');
+  const advToggle = document.querySelector('.advanced-toggle');
+  if (advToggle) {
+    advToggle.classList.remove('expanded');
+    advToggle.setAttribute('aria-expanded', 'false');
+  }
+  document.getElementById('wizardQrPanel').classList.remove('expanded');
+  document.getElementById('wizardQrToggleBtn').innerHTML = '<i class="fas fa-qrcode"></i> Show QR Code';
+  wizardGoToStep(1);
+  document.getElementById('shareWizard').classList.remove('hidden');
+  document.body.style.overflow = 'hidden';
+}
+function closeShareWizard() {
+  document.getElementById('shareWizard').classList.add('hidden');
+  document.body.style.overflow = '';
+  document.querySelectorAll('.doc-select-checkbox, .folder-select-checkbox').forEach(cb => {
+    cb.checked = false; cb.indeterminate = false;
+  });
+  updateSelectionCount();
+}
+function selectWizardMethod(method) {
+  wizardMethod = method;
+  document.getElementById('methodPublicCard').classList.toggle('selected', method === 'public');
+  document.getElementById('methodPasswordCard').classList.toggle('selected', method === 'password');
+  document.getElementById('wizardPasswordGroup').classList.toggle('hidden', method !== 'password');
+}
+function wizardGoToStep(step) {
+  [1,2,3].forEach(n => {
+    document.getElementById('wizardStep' + n).classList.toggle('active', n === step);
+    document.getElementById('wizProgress' + n).classList.toggle('active', n === step);
+    document.getElementById('wizProgress' + n).classList.toggle('done', n < step);
+    document.getElementById('wizardFooterStep' + n).classList.toggle('hidden', n !== step);
+  });
+}
+function toggleWizardAdvanced() {
+  const panel = document.getElementById('wizardAdvancedPanel');
+  const btn   = document.querySelector('.advanced-toggle');
+  const expanded = panel.classList.toggle('expanded');
+  if (btn) {
+    btn.classList.toggle('expanded', expanded);
+    btn.setAttribute('aria-expanded', expanded ? 'true' : 'false');
+  }
+}
+function onWizardExpiryPresetChange() {
+  const preset = document.getElementById('wizard_expiry_preset').value;
+  const customInput = document.getElementById('wizard_expiry_custom');
+  customInput.classList.toggle('hidden', preset !== 'custom');
+  if (preset === 'custom' && !customInput.value) {
+    const d = new Date(Date.now() + 7 * 86400000);
+    customInput.value = d.toISOString().slice(0, 16);
+  }
+}
+function computeWizardExpiryIso() {
+  const preset = document.getElementById('wizard_expiry_preset').value;
+  if (!preset) return null;
+  if (preset === 'custom') {
+    const v = document.getElementById('wizard_expiry_custom').value;
+    return v || null;
+  }
+  const d = new Date(Date.now() + parseInt(preset,10) * 86400000);
+  d.setSeconds(0,0);
+  d.setMinutes(d.getMinutes() - d.getTimezoneOffset());
+  return d.toISOString().slice(0, 16);
+}
+function submitShareWizard(event) {
+  event.preventDefault();
+  const selectedDocs    = [...document.querySelectorAll('.doc-select-checkbox:checked')].map(cb => cb.dataset.docId);
+  const selectedFolders = [];
+  document.querySelectorAll('.vw-subfolder-group').forEach(group => {
+    const parentCb = group.querySelector('.folder-select-checkbox');
+    if (parentCb && parentCb.checked) selectedFolders.push(parentCb.dataset.folderName);
+  });
+  const generateBtn = document.getElementById('wizardGenerateBtn');
+  generateBtn.classList.add('is-loading');
+  generateBtn.disabled = true;
+  generateBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Creating your link...';
+  const payload = {
+    doc_ids: selectedDocs, folders: selectedFolders, access_mode: wizardMethod,
+    password: document.getElementById('wizard_password').value,
+    allow_download: document.getElementById('wizard_allow_download').checked,
+    allow_printing: document.getElementById('wizard_allow_printing').checked,
+    view_limit: document.getElementById('wizard_view_limit').value || null,
+    expires_at: computeWizardExpiryIso()
+  };
+  let targetVaultId = '{{ vault_id }}';
+  if (targetVaultId === 'all') {
+    const firstCb = document.querySelector('.doc-select-checkbox:checked');
+    targetVaultId = firstCb?.dataset?.vaultId || '{% if all_vaults %}{{ all_vaults[0].vault_id }}{% endif %}';
+  }
+  fetch(`/vault/${targetVaultId}/share`, {
+    method: 'POST', headers: {'Content-Type':'application/json'},
+    body: JSON.stringify(payload)
+  })
+  .then(r => r.json())
+  .then(data => {
+    generateBtn.classList.remove('is-loading');
+    generateBtn.disabled = false;
+    generateBtn.innerHTML = '<i class="fas fa-share-nodes"></i> Create Share Link';
+    if (data.success) { renderWizardResult(data, payload); wizardGoToStep(3); }
+    else showToast(data.message || 'Failed to create share link.', 'error');
+  })
+  .catch(() => {
+    generateBtn.classList.remove('is-loading');
+    generateBtn.disabled = false;
+    generateBtn.innerHTML = '<i class="fas fa-share-nodes"></i> Create Share Link';
+    showToast('Network error. Please try again.', 'error');
+  });
+}
+function renderWizardResult(data, payload) {
+  document.getElementById('wizardResultLink').textContent = data.share_url;
+  document.getElementById('wizardResultQrImg').src = data.qr_url;
+  document.getElementById('wizardDownloadQrBtn').href = data.download_qr_url;
+  const qrPanel = document.getElementById('wizardQrPanel');
+  const qrBtn   = document.getElementById('wizardQrToggleBtn');
+  if (wizardShowQrOnResult) { qrPanel.classList.add('expanded'); qrBtn.innerHTML = '<i class="fas fa-qrcode"></i> Hide QR Code'; }
+  else { qrPanel.classList.remove('expanded'); qrBtn.innerHTML = '<i class="fas fa-qrcode"></i> Show QR Code'; }
+  const items = [];
+  items.push(payload.access_mode === 'password' ? '<i class="fas fa-lock"></i> Password protected' : '<i class="fas fa-link"></i> Anyone with the link');
+  if (payload.expires_at) {
+    const friendly = new Date(payload.expires_at).toLocaleDateString(undefined,{month:'short',day:'numeric',year:'numeric'});
+    items.push(`<i class="fas fa-clock"></i> Expires on ${friendly}`);
+  } else { items.push('<i class="fas fa-infinity"></i> Never expires'); }
+  items.push(payload.view_limit ? `<i class="fas fa-eye"></i> Maximum ${payload.view_limit} view${payload.view_limit==1?'':'s'}` : '<i class="fas fa-eye"></i> Unlimited views');
+  items.push(payload.allow_download ? '<i class="fas fa-download"></i> Downloading allowed' : '<i class="fas fa-ban"></i> Downloading turned off');
+  if (!payload.allow_printing) items.push('<i class="fas fa-ban"></i> Printing turned off');
+  document.getElementById('wizardSummaryList').innerHTML = items.map(t => `<div class="wizard-summary-item">${t}</div>`).join('');
+}
+function copyWizardLink() {
+  navigator.clipboard.writeText(document.getElementById('wizardResultLink').textContent.trim())
+    .then(() => showToast('Link copied!', 'success'));
+}
+function toggleWizardQr() {
+  const panel = document.getElementById('wizardQrPanel');
+  const btn   = document.getElementById('wizardQrToggleBtn');
+  const exp   = panel.classList.toggle('expanded');
+  btn.innerHTML = exp ? '<i class="fas fa-qrcode"></i> Hide QR Code' : '<i class="fas fa-qrcode"></i> Show QR Code';
+}
+function nativeShareWizard() {
+  const link = document.getElementById('wizardResultLink').textContent.trim();
+  if (navigator.share) navigator.share({title:'Shared document',url:link}).catch(()=>{});
+  else copyWizardLink();
+}
+
+/* ── Preview modal ─────────────────────────────────────── */
+function openPreviewModal(viewUrl, downloadUrl, filename, fileType) {
+  const modal = document.getElementById('previewModal');
+  const frame = document.getElementById('previewFrame');
+  const img   = document.getElementById('previewImage');
+  document.getElementById('previewFilename').textContent = filename || 'Document';
+  document.getElementById('previewDownloadBtn').href = downloadUrl;
+  document.getElementById('previewOpenBtn').href     = viewUrl;
+  const isImage = ['jpg','jpeg','png'].includes((fileType||'').toLowerCase());
+  if (isImage) {
+    frame.src = '';
+    frame.classList.add('hidden');
+    img.src = viewUrl;
+    img.classList.remove('hidden');
+  } else {
+    img.src = '';
+    img.classList.add('hidden');
+    frame.src = viewUrl;
+    frame.classList.remove('hidden');
+  }
+  modal.classList.remove('hidden');
+  document.body.style.overflow = 'hidden';
+}
+function closePreviewModal() {
+  document.getElementById('previewModal').classList.add('hidden');
+  document.getElementById('previewFrame').src = '';
+  document.getElementById('previewImage').src  = '';
+  document.body.style.overflow = '';
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+  updateSelectionCount();
+
+  // Restore saved view preference (default to 'grid')
+  let savedView = 'grid';
+  try { savedView = localStorage.getItem('vaultView_{{ vault_id }}') || 'grid'; }
+  catch (e) { /* localStorage can be unavailable (private mode, blocked cookies) */ }
+  setVaultView(savedView);
+});
+
+/* ── Search + type filter ─────────────────────────────────
+   Single source of truth, wired in its own listener so a
+   failure anywhere else on the page can never stop the
+   filter chips / search box from working. */
+document.addEventListener('DOMContentLoaded', () => {
+  const IMAGE_TYPES = ['jpg','jpeg','png','bmp','webp','tiff','jfif'];
+
+  const searchInput  = document.getElementById('searchInput');
+  const chipsWrap     = document.getElementById('vwFilterChips');
+  const emptyState    = document.getElementById('vw-filter-empty');
+  const itemsWrapper  = document.getElementById('vault-items-wrapper');
+  if (!chipsWrap) return; // nothing to filter on this page
+
+  function currentFilter() {
+    const active = chipsWrap.querySelector('.vw-chip.active');
+    return active ? active.dataset.filter : 'all';
+  }
+
+  function applyFilters() {
+    const q      = searchInput ? searchInput.value.toLowerCase().trim() : '';
+    const filter = currentFilter();
+    let anyVisible = false;
+
+    document.querySelectorAll('.doc-grid-card').forEach(card => {
+      const name = (card.dataset.name || '').toLowerCase();
+      const type = (card.dataset.type || '').toLowerCase();
+
+      let matchesFilter = true;
+      if (filter === 'pdf') matchesFilter = (type === 'pdf');
+      else if (filter === 'image') matchesFilter = IMAGE_TYPES.includes(type);
+
+      const visible = matchesFilter && (!q || name.includes(q));
+      // .doc-grid-card has `display: flex !important;` in the stylesheet, which
+      // silently beats a plain `card.style.display = 'none'`. setProperty with
+      // the 'important' priority is the only inline override that wins over it.
+      if (visible) card.style.removeProperty('display');
+      else card.style.setProperty('display', 'none', 'important');
+      if (visible) anyVisible = true;
+    });
+
+    // Hide sub-folder groups / root list container if every row inside is hidden
+    document.querySelectorAll('.vw-subfolder-group').forEach(group => {
+      const visible = [...group.querySelectorAll('.doc-grid-card')].some(c => c.style.display !== 'none');
+      if (visible) group.style.removeProperty('display');
+      else group.style.setProperty('display', 'none', 'important');
+    });
+    const rootList = document.getElementById('root-doc-list');
+    if (rootList) {
+      // .doc-grid-container (rootList's own class) is ALSO `display: grid !important;`
+      const visible = [...rootList.querySelectorAll('.doc-grid-card')].some(c => c.style.display !== 'none');
+      if (visible) rootList.style.removeProperty('display');
+      else rootList.style.setProperty('display', 'none', 'important');
+    }
+
+    // Show a clear "no results" message instead of a page that just looks broken
+    if (emptyState) emptyState.classList.toggle('hidden', anyVisible);
+    if (itemsWrapper) itemsWrapper.style.display = anyVisible ? '' : 'none';
+  }
+
+  if (searchInput) searchInput.addEventListener('input', applyFilters);
+
+  // Event delegation on the wrapper: works even if chips are re-rendered later
+  chipsWrap.addEventListener('click', (e) => {
+    const chip = e.target.closest('.vw-chip');
+    if (!chip) return;
+    chipsWrap.querySelectorAll('.vw-chip').forEach(c => c.classList.remove('active'));
+    chip.classList.add('active');
+    applyFilters();
+  });
+});
+</script>
+{% endblock %}

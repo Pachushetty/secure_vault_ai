@@ -1,0 +1,84 @@
+{% extends "base.html" %}
+{% block title %}Verify Code — SecureVault{% endblock %}
+{% block content %}
+<div class="gate-wrapper">
+  <div class="gate-card">
+    <div class="gate-icon"><i class="fas fa-shield-halved"></i></div>
+    <h1>Verify Code</h1>
+    <p class="gate-sub">
+      Enter the 6-digit verification code sent to<br>
+      <strong style="color: var(--brass, #a9822f);">{{ email }}</strong>
+    </p>
+
+    <form method="POST" class="gate-form" id="verifyForm" autocomplete="off">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <div class="form-group" style="text-align:left; margin-bottom:1.5rem;">
+        <label class="form-label" style="display:flex; justify-content:space-between;">
+          <span><i class="fas fa-hashtag"></i> 6-Digit Code</span>
+          <span id="expiryTimer" style="color: var(--brass); font-size: 0.8rem; font-weight: 600;">Expires in 10:00</span>
+        </label>
+        <div class="gate-input-wrap">
+          <i class="fas fa-key gate-input-icon"></i>
+          <input type="text" name="code" id="resetCodeInput" placeholder="••••••"
+                 class="gate-input" required autofocus maxlength="6" pattern="[0-9]{6}"
+                 style="letter-spacing: 0.3em; font-size: 1.25rem; font-weight: 600; text-align: center;"
+                 inputmode="numeric" autocomplete="one-time-code"/>
+        </div>
+      </div>
+      <button type="submit" class="btn btn-primary btn-full btn-lg" id="verifyBtn">
+        <i class="fas fa-circle-check"></i> Verify & Continue
+      </button>
+    </form>
+
+    <div class="gate-divider"><span>Didn't receive the code?</span></div>
+    
+    <form method="POST" action="{{ url_for('resend_code') }}" id="resendForm" style="margin-bottom: 0.5rem;">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <button type="submit" class="btn btn-outline btn-full" id="resendBtn">
+        <i class="fas fa-rotate-right"></i> Resend Verification Code
+      </button>
+    </form>
+
+    <a href="{{ url_for('forgot_password') }}" class="btn btn-outline btn-full" style="opacity: 0.85;">
+      <i class="fas fa-arrow-left"></i> Change Email
+    </a>
+
+    <div class="gate-info" style="margin-top:1.5rem;">
+      <div class="gate-info-item"><i class="fas fa-triangle-exclamation"></i> Max 5 verification attempts</div>
+      <div class="gate-info-item"><i class="fas fa-clock"></i> Codes expire after 10 minutes</div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+{% block scripts %}
+<script>
+document.getElementById('verifyForm').addEventListener('submit', function() {
+  setBtnLoading(document.getElementById('verifyBtn'), 'Verifying...');
+});
+document.getElementById('resendForm').addEventListener('submit', function() {
+  setBtnLoading(document.getElementById('resendBtn'), 'Resending...');
+});
+
+// Auto-format only digits
+const codeInput = document.getElementById('resetCodeInput');
+codeInput.addEventListener('input', function(e) {
+  this.value = this.value.replace(/\D/g, '').slice(0, 6);
+});
+
+// 10-minute countdown indicator
+let duration = 600;
+const timerEl = document.getElementById('expiryTimer');
+const interval = setInterval(function() {
+  duration--;
+  if (duration <= 0) {
+    clearInterval(interval);
+    timerEl.textContent = 'Expired';
+    timerEl.style.color = '#e05c52';
+  } else {
+    const mins = Math.floor(duration / 60);
+    const secs = duration % 60;
+    timerEl.textContent = 'Expires in ' + mins + ':' + (secs < 10 ? '0' : '') + secs;
+  }
+}, 1000);
+</script>
+{% endblock %}

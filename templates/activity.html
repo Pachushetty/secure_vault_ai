@@ -1,0 +1,448 @@
+{% extends "base.html" %}
+{% block title %}Activity Log — SecureVault{% endblock %}
+{% block content %}
+
+<div class="dash-header">
+  <div class="wrap">
+    <div>
+      <div class="dash-eyebrow"><i class="fas fa-clock-rotate-left"></i> Security &amp; Audit Trail</div>
+      <h1>Activity Log</h1>
+      <p>A chronological record of authentication, document operations, and access events on your account.</p>
+    </div>
+  </div>
+</div>
+
+<div class="dash-body">
+  <div class="wrap">
+
+    <!-- Tab Navigation -->
+    <div class="page-tabs" style="margin-bottom: 1.5rem;">
+      <a href="{{ url_for('activity_page', tab='audit', q=q if active_tab=='audit' else '', type=type_filter if active_tab=='audit' else 'all', date=date_filter if active_tab=='audit' else 'all') }}" 
+         class="page-tab {% if active_tab == 'audit' %}page-tab-active{% endif %}" id="tabAuditBtn">
+        <i class="fas fa-shield-halved"></i> Account Operations ({{ audit_total_count }})
+      </a>
+      <a href="{{ url_for('activity_page', tab='share', q=q if active_tab=='share' else '', type=type_filter if active_tab=='share' else 'all', date=date_filter if active_tab=='share' else 'all') }}" 
+         class="page-tab {% if active_tab == 'share' %}page-tab-active{% endif %}" id="tabShareBtn">
+        <i class="fas fa-share-nodes"></i> Share Access Events ({{ share_total_count }})
+      </a>
+    </div>
+
+    <!-- Filter Toolbar -->
+    <div class="activity-filter-card">
+      <form method="GET" action="{{ url_for('activity_page') }}" class="activity-filter-form" id="activityFilterForm">
+        <input type="hidden" name="tab" value="{{ active_tab }}">
+
+        <!-- Search Input -->
+        <div class="activity-search-wrap">
+          <i class="fas fa-magnifying-glass"></i>
+          <input type="text" name="q" value="{{ q }}" placeholder="Search details, IP, device, name..." class="activity-search-input">
+        </div>
+
+        <!-- Event Type / Action Filter -->
+        <div class="activity-select-wrap">
+          <select name="type" class="activity-select" onchange="document.getElementById('activityFilterForm').submit()">
+            {% if active_tab == 'audit' %}
+              <option value="all" {% if type_filter == 'all' or not type_filter %}selected{% endif %}>All Event Types</option>
+              <option value="auth" {% if type_filter == 'auth' %}selected{% endif %}>Authentication (Logins &amp; Reg)</option>
+              <option value="doc" {% if type_filter == 'doc' %}selected{% endif %}>Document Actions</option>
+              <option value="vault" {% if type_filter == 'vault' %}selected{% endif %}>Folder &amp; Vaults</option>
+              <option value="security" {% if type_filter == 'security' %}selected{% endif %}>Security &amp; Passwords</option>
+              <option value="share" {% if type_filter == 'share' %}selected{% endif %}>Share Links</option>
+            {% else %}
+              <option value="all" {% if type_filter == 'all' or not type_filter %}selected{% endif %}>All Actions</option>
+              <option value="view" {% if type_filter == 'view' %}selected{% endif %}>Views &amp; Scans</option>
+              <option value="download" {% if type_filter == 'download' %}selected{% endif %}>Downloads</option>
+              <option value="failed" {% if type_filter == 'failed' %}selected{% endif %}>Failed Auth</option>
+            {% endif %}
+          </select>
+        </div>
+
+        <!-- Date Range Filter -->
+        <div class="activity-select-wrap">
+          <select name="date" class="activity-select" onchange="document.getElementById('activityFilterForm').submit()">
+            <option value="all" {% if date_filter == 'all' or not date_filter %}selected{% endif %}>All Time</option>
+            <option value="today" {% if date_filter == 'today' %}selected{% endif %}>Today</option>
+            <option value="7d" {% if date_filter == '7d' %}selected{% endif %}>Last 7 Days</option>
+            <option value="30d" {% if date_filter == '30d' %}selected{% endif %}>Last 30 Days</option>
+          </select>
+        </div>
+
+        <!-- Actions -->
+        <div class="activity-filter-actions">
+          <button type="submit" class="btn btn-primary btn-sm">
+            <i class="fas fa-filter"></i> Apply
+          </button>
+          {% if q or (type_filter and type_filter != 'all') or (date_filter and date_filter != 'all') %}
+          <a href="{{ url_for('activity_page', tab=active_tab) }}" class="btn btn-outline btn-sm">
+            <i class="fas fa-rotate-left"></i> Reset
+          </a>
+          {% endif %}
+        </div>
+      </form>
+    </div>
+
+    <!-- ── 1. ACCOUNT OPERATIONS TAB ───────────────────────── -->
+    {% if active_tab == 'audit' %}
+    <div id="auditTabContent" class="form-card">
+      <div class="form-card-header">
+        <div class="step-badge"><i class="fas fa-list-check"></i></div>
+        <div>
+          <h2>Account Operations</h2>
+          <p>Security-critical events including logins, document uploads, and configuration updates.</p>
+        </div>
+      </div>
+      <div class="form-body">
+        {% if audit_events %}
+        <div class="activity-timeline">
+          {% for ev in audit_events %}
+          <div class="activity-item">
+            <div class="activity-icon 
+              {% if 'login_success' in ev.event_type %}activity-icon--success
+              {% elif 'failed' in ev.event_type %}activity-icon--danger
+              {% elif 'delete' in ev.event_type %}activity-icon--danger
+              {% elif 'upload' in ev.event_type %}activity-icon--primary
+              {% else %}activity-icon--info{% endif %}">
+              {% if 'login' in ev.event_type %}<i class="fas fa-right-to-bracket"></i>
+              {% elif 'upload' in ev.event_type %}<i class="fas fa-cloud-arrow-up"></i>
+              {% elif 'delete' in ev.event_type %}<i class="fas fa-trash"></i>
+              {% elif 'register' in ev.event_type %}<i class="fas fa-user-plus"></i>
+              {% elif 'password' in ev.event_type %}<i class="fas fa-key"></i>
+              {% else %}<i class="fas fa-shield"></i>{% endif %}
+            </div>
+            <div class="activity-content">
+              <div class="activity-head">
+                <span class="activity-title">{{ ev.event_type|replace('_', ' ')|title }}</span>
+                <span class="activity-time font-mono">{{ ev.created_at|friendly_date }} · {{ ev.created_at[11:19] if ev.created_at|length >= 19 else '' }} UTC</span>
+              </div>
+              {% if ev.details %}
+              <div class="activity-details font-mono">{{ ev.details }}</div>
+              {% endif %}
+              <div class="activity-meta">
+                {% if ev.ip_address %}<span><i class="fas fa-network-wired"></i> {{ ev.ip_address }}</span>{% endif %}
+                {% if ev.user_agent %}<span><i class="fas fa-laptop"></i> {{ ev.user_agent[:45] }}…</span>{% endif %}
+              </div>
+            </div>
+          </div>
+          {% endfor %}
+        </div>
+
+        <!-- Pagination Bar -->
+        {% if current_total > 0 %}
+        <div class="activity-pagination-bar">
+          <div class="activity-page-info">
+            Showing <strong>{{ start_item }}–{{ end_item }}</strong> of <strong>{{ current_total }}</strong> operations
+          </div>
+          <nav aria-label="Activity pagination">
+            <ul class="pagination-nav">
+              <li>
+                <a href="{{ url_for('activity_page', tab='audit', q=q, type=type_filter, date=date_filter, page=page-1) }}"
+                   class="pagination-btn {% if page <= 1 %}disabled{% endif %}"
+                   aria-label="Previous page">
+                  <i class="fas fa-chevron-left"></i>
+                </a>
+              </li>
+              {% for p in pages_to_show %}
+              <li>
+                <a href="{{ url_for('activity_page', tab='audit', q=q, type=type_filter, date=date_filter, page=p) }}"
+                   class="pagination-btn {% if p == page %}active{% endif %}">
+                  {{ p }}
+                </a>
+              </li>
+              {% endfor %}
+              <li>
+                <a href="{{ url_for('activity_page', tab='audit', q=q, type=type_filter, date=date_filter, page=page+1) }}"
+                   class="pagination-btn {% if page >= total_pages %}disabled{% endif %}"
+                   aria-label="Next page">
+                  <i class="fas fa-chevron-right"></i>
+                </a>
+              </li>
+            </ul>
+          </nav>
+        </div>
+        {% endif %}
+
+        {% else %}
+        <div class="empty-state">
+          <i class="fas fa-clock-rotate-left"></i>
+          <h3>No matching operations found</h3>
+          <p>{% if q or type_filter != 'all' or date_filter != 'all' %}Try adjusting or resetting your filter criteria.{% else %}Security operations will appear here automatically as you use your vault.{% endif %}</p>
+          {% if q or type_filter != 'all' or date_filter != 'all' %}
+          <div style="margin-top: 1rem;">
+            <a href="{{ url_for('activity_page', tab='audit') }}" class="btn btn-outline btn-sm">
+              <i class="fas fa-rotate-left"></i> Clear All Filters
+            </a>
+          </div>
+          {% endif %}
+        </div>
+        {% endif %}
+      </div>
+    </div>
+    {% endif %}
+
+    <!-- ── 2. SHARE ACCESS EVENTS TAB ───────────────────────── -->
+    {% if active_tab == 'share' %}
+    <div id="shareTabContent" class="form-card">
+      <div class="form-card-header">
+        <div class="step-badge"><i class="fas fa-share-nodes"></i></div>
+        <div>
+          <h2>Share Access History</h2>
+          <p>Log of external visitors viewing or downloading your shared documents.</p>
+        </div>
+      </div>
+      <div class="form-body">
+        {% if share_events %}
+        <div class="activity-timeline">
+          {% for ev in share_events %}
+          <div class="activity-item" data-share-id="{{ ev.share_id }}">
+            <div class="activity-icon 
+              {% if ev.action == 'view' or ev.action == 'scan' %}activity-icon--success
+              {% elif ev.action == 'download' %}activity-icon--primary
+              {% elif ev.action == 'failed_auth' %}activity-icon--danger
+              {% else %}activity-icon--info{% endif %}">
+              {% if ev.action == 'download' %}<i class="fas fa-download"></i>
+              {% elif ev.action == 'failed_auth' %}<i class="fas fa-lock"></i>
+              {% else %}<i class="fas fa-eye"></i>{% endif %}
+            </div>
+            <div class="activity-content">
+              <div class="activity-head">
+                <span class="activity-title">{{ ev.action|replace('_', ' ')|title }} — {{ ev.vault_name }}</span>
+                <span class="activity-time font-mono">{{ ev.scanned_at|friendly_date }} · {{ ev.scanned_at[11:19] if ev.scanned_at|length >= 19 else '' }} UTC</span>
+              </div>
+              {% if ev.details %}
+              <div class="activity-details font-mono">{{ ev.details }}</div>
+              {% endif %}
+              {% set is_expired = ev.expires_at and ev.expires_at < now_iso %}
+              <div class="activity-meta">
+                <span><i class="fas fa-link"></i> /shared/{{ ev.share_id[:12] }}…</span>
+                {% if ev.ip_address %}<span><i class="fas fa-network-wired"></i> {{ ev.ip_address }}</span>{% endif %}
+                <span class="activity-share-status-badge">
+                  {% if ev.is_revoked %}<span class="badge badge-orange" style="font-size:0.7rem;">🔴 Sharing stopped</span>
+                  {% elif is_expired %}<span class="badge badge-orange" style="font-size:0.7rem;">⏱️ Expired</span>{% endif %}
+                </span>
+              </div>
+              <div class="activity-share-actions" style="display:flex; gap:0.5rem; margin-top:0.6rem;">
+                <button type="button" class="btn btn-sm btn-outline" title="Edit this share link's permissions"
+                        style="{% if ev.is_revoked or is_expired %}display:none;{% endif %}"
+                        onclick='openEditShareModal("{{ ev.vault_id }}", "{{ ev.share_id }}", {{ {
+                            "allow_download": ev.allow_download,
+                            "allow_printing": ev.allow_printing,
+                            "view_limit": ev.view_limit,
+                            "expires_at": ev.expires_at,
+                            "has_password": ev.has_password
+                        }|tojson }})'>
+                  <i class="fas fa-sliders"></i> Manage / Edit Permissions
+                </button>
+                <button type="button" class="btn btn-sm btn-danger activity-stop-share-btn" title="Forcefully stop this share link"
+                        style="{% if ev.is_revoked or is_expired %}display:none;{% endif %}"
+                        onclick="confirmStopSharingAjax('/shared/{{ ev.share_id[:16] }}…', '{{ ev.vault_id }}', '{{ ev.share_id }}', () => stopShareRowsInPlace('{{ ev.share_id }}'))">
+                  <i class="fas fa-ban"></i> Stop Sharing
+                </button>
+              </div>
+            </div>
+          </div>
+          {% endfor %}
+        </div>
+
+        <!-- Pagination Bar -->
+        {% if current_total > 0 %}
+        <div class="activity-pagination-bar">
+          <div class="activity-page-info">
+            Showing <strong>{{ start_item }}–{{ end_item }}</strong> of <strong>{{ current_total }}</strong> events
+          </div>
+          <nav aria-label="Activity pagination">
+            <ul class="pagination-nav">
+              <li>
+                <a href="{{ url_for('activity_page', tab='share', q=q, type=type_filter, date=date_filter, page=page-1) }}"
+                   class="pagination-btn {% if page <= 1 %}disabled{% endif %}"
+                   aria-label="Previous page">
+                  <i class="fas fa-chevron-left"></i>
+                </a>
+              </li>
+              {% for p in pages_to_show %}
+              <li>
+                <a href="{{ url_for('activity_page', tab='share', q=q, type=type_filter, date=date_filter, page=p) }}"
+                   class="pagination-btn {% if p == page %}active{% endif %}">
+                  {{ p }}
+                </a>
+              </li>
+              {% endfor %}
+              <li>
+                <a href="{{ url_for('activity_page', tab='share', q=q, type=type_filter, date=date_filter, page=page+1) }}"
+                   class="pagination-btn {% if page >= total_pages %}disabled{% endif %}"
+                   aria-label="Next page">
+                  <i class="fas fa-chevron-right"></i>
+                </a>
+              </li>
+            </ul>
+          </nav>
+        </div>
+        {% endif %}
+
+        {% else %}
+        <div class="empty-state">
+          <i class="fas fa-share-nodes"></i>
+          <h3>No matching share events found</h3>
+          <p>{% if q or type_filter != 'all' or date_filter != 'all' %}Try adjusting or resetting your filter criteria.{% else %}When someone opens or downloads your shared links, the access record will show here.{% endif %}</p>
+          {% if q or type_filter != 'all' or date_filter != 'all' %}
+          <div style="margin-top: 1rem;">
+            <a href="{{ url_for('activity_page', tab='share') }}" class="btn btn-outline btn-sm">
+              <i class="fas fa-rotate-left"></i> Clear All Filters
+            </a>
+          </div>
+          {% endif %}
+        </div>
+        {% endif %}
+      </div>
+    </div>
+    {% endif %}
+
+  </div>
+</div>
+
+<!-- Edit Share Permissions Modal (same popup used on the Shared Documents page) -->
+<div class="modal-overlay logs-modal-overlay hidden" id="editShareModal" onclick="if(event.target===this)closeEditShareModal()">
+  <div class="logs-modal" style="max-width: 480px;">
+    <div class="logs-modal-header">
+      <h3><i class="fas fa-sliders"></i> Edit Share Permissions</h3>
+      <div class="logs-modal-actions">
+        <button class="btn btn-ghost btn-sm" onclick="closeEditShareModal()"><i class="fas fa-xmark"></i></button>
+      </div>
+    </div>
+
+    <form id="editShareForm" class="form-body" style="padding: 1.25rem;" onsubmit="submitEditShareForm(event)">
+      <div class="advanced-option-row">
+        <div class="advanced-option-text">
+          <strong>Allow downloading</strong>
+          <span>Let people save a copy of the document.</span>
+        </div>
+        <label class="switch">
+          <input type="checkbox" id="editAllowDownload" />
+          <span class="switch-track"></span>
+        </label>
+      </div>
+      <div class="advanced-option-row">
+        <div class="advanced-option-text">
+          <strong>Allow printing</strong>
+          <span>Let people print the document.</span>
+        </div>
+        <label class="switch">
+          <input type="checkbox" id="editAllowPrinting" />
+          <span class="switch-track"></span>
+        </label>
+      </div>
+
+      <div class="form-group" style="margin-top: 1rem;">
+        <label class="form-label">Max views <span style="color:var(--text-muted); font-weight:400;">(leave blank for unlimited)</span></label>
+        <input type="number" min="1" id="editViewLimit" class="form-input" placeholder="Unlimited">
+      </div>
+
+      <div class="form-group">
+        <label class="form-label">Expires on <span style="color:var(--text-muted); font-weight:400;">(leave blank for no expiry)</span></label>
+        <input type="datetime-local" id="editExpiresAt" class="form-input">
+      </div>
+
+      <div class="form-group">
+        <label class="form-label" id="editPasswordLabel">Set a password</label>
+        <input type="text" id="editPassword" class="form-input" placeholder="Leave blank to keep current setting">
+        <label id="editRemovePasswordRow" class="hidden" style="display:flex; align-items:center; gap:0.4rem; margin-top:0.5rem; font-size:0.85rem; color:var(--text-muted); cursor:pointer;">
+          <input type="checkbox" id="editRemovePassword"> Remove password protection
+        </label>
+      </div>
+
+      <div style="display:flex; gap:0.75rem; justify-content:flex-end; margin-top:1.25rem;">
+        <button type="button" class="btn btn-outline" onclick="closeEditShareModal()">Cancel</button>
+        <button type="submit" class="btn btn-primary" id="editShareSaveBtn"><i class="fas fa-check"></i> Save Changes</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+{% endblock %}
+{% block scripts %}
+<script>
+/* After a Stop Sharing action succeeds, update every row in this list that
+   points at the same share_id — there's usually more than one, since each
+   view/scan/download creates its own log entry for the same link. */
+function stopShareRowsInPlace(shareId) {
+  document.querySelectorAll(`.activity-item[data-share-id="${shareId}"]`).forEach(item => {
+    const btn = item.querySelector('.activity-stop-share-btn');
+    if (btn) btn.style.display = 'none';
+    const editBtn = item.querySelector('.activity-share-actions .btn-outline');
+    if (editBtn) editBtn.style.display = 'none';
+    const badgeSlot = item.querySelector('.activity-share-status-badge');
+    if (badgeSlot) badgeSlot.innerHTML = '<span class="badge badge-orange" style="font-size:0.7rem;">🔴 Sharing stopped</span>';
+  });
+}
+
+/* Edit Share Permissions modal — same popup/behavior as the Shared Documents
+   page, opened in-place here instead of navigating away. */
+let editShareVaultId = null;
+let editShareId = null;
+
+function openEditShareModal(vaultId, shareId, current) {
+  editShareVaultId = vaultId;
+  editShareId = shareId;
+
+  document.getElementById('editAllowDownload').checked = !!current.allow_download;
+  document.getElementById('editAllowPrinting').checked = !!current.allow_printing;
+  document.getElementById('editViewLimit').value = current.view_limit || '';
+  document.getElementById('editExpiresAt').value = current.expires_at ? current.expires_at.slice(0, 16) : '';
+  document.getElementById('editPassword').value = '';
+  document.getElementById('editRemovePassword').checked = false;
+
+  const label = document.getElementById('editPasswordLabel');
+  const removeRow = document.getElementById('editRemovePasswordRow');
+  if (current.has_password) {
+    label.textContent = 'Change password';
+    removeRow.classList.remove('hidden');
+    removeRow.style.display = 'flex';
+  } else {
+    label.textContent = 'Set a password';
+    removeRow.classList.add('hidden');
+    removeRow.style.display = 'none';
+  }
+
+  document.getElementById('editShareModal').classList.remove('hidden');
+}
+
+function closeEditShareModal() {
+  document.getElementById('editShareModal').classList.add('hidden');
+}
+
+async function submitEditShareForm(e) {
+  e.preventDefault();
+  const btn = document.getElementById('editShareSaveBtn');
+  setBtnLoading(btn, 'Saving...');
+
+  const payload = {
+    allow_download: document.getElementById('editAllowDownload').checked,
+    allow_printing: document.getElementById('editAllowPrinting').checked,
+    view_limit: document.getElementById('editViewLimit').value,
+    expires_at: document.getElementById('editExpiresAt').value,
+    password: document.getElementById('editPassword').value,
+    remove_password: document.getElementById('editRemovePassword').checked
+  };
+
+  try {
+    const res = await fetch(`/vault/${editShareVaultId}/share/${editShareId}/update`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+    const data = await res.json();
+    if (data.success) {
+      showToast('Share permissions updated.', 'success');
+      closeEditShareModal();
+    } else {
+      showToast(data.message || 'Could not update permissions.', 'error');
+      btn.disabled = false;
+      btn.innerHTML = '<i class="fas fa-check"></i> Save Changes';
+    }
+  } catch (err) {
+    showToast('Network error while saving. Please try again.', 'error');
+    btn.disabled = false;
+    btn.innerHTML = '<i class="fas fa-check"></i> Save Changes';
+  }
+}
+</script>
+{% endblock %}

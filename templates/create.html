@@ -1,0 +1,77 @@
+{% extends "base.html" %}
+{% block title %}Create Folder — SecureVault{% endblock %}
+{% block content %}
+<div class="wrap" style="padding-top: 1.5rem; padding-bottom: 3rem;">
+  <div class="form-layout">
+    <div class="page-header">
+      <div class="page-header-nav">
+        <a href="{{ url_for('dashboard') }}" class="btn btn-ghost btn-sm">
+          <i class="fas fa-arrow-left"></i> Back to Dashboard
+        </a>
+      </div>
+      <p class="page-header-eyebrow">New Folder</p>
+      <h1><i class="fas fa-folder-plus"></i> Create Folder</h1>
+      <p>Name your folder and add your documents securely</p>
+    </div>
+
+    <form id="createForm" method="POST" enctype="multipart/form-data" novalidate>
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <div class="form-card">
+      <div class="form-card-header">
+        <div class="step-badge">1</div>
+        <div>
+          <h2>Folder Name</h2>
+          <p>Give this folder a memorable name</p>
+        </div>
+      </div>
+      <div class="form-body">
+        <div class="form-group">
+          <label for="vault_name"><i class="fas fa-folder"></i> Folder Name <span class="required">*</span></label>
+          <input type="text" id="vault_name" name="vault_name"
+                 placeholder="e.g. Personal Documents, Work Files, College Certs"
+                 class="form-input" required autofocus/>
+          <small class="hint">You can create multiple folders — one for each category, such as Education, Personal, Work, or Certificates.</small>
+        </div>
+      </div>
+    </div>
+
+    <div class="form-card">
+      <div class="form-card-header">
+        <div class="step-badge">2</div>
+        <div>
+          <h2>Add Documents</h2>
+          <p>Supported: PDF, JPG, JPEG, PNG — up to 16 MB each</p>
+        </div>
+      </div>
+      <div class="form-body">
+        <div class="drop-zone" id="dropZone">
+          <input type="file" id="fileInput" name="documents" multiple
+                 accept=".pdf,.jpg,.jpeg,.png" class="file-input"/>
+          <div class="drop-zone-content">
+            <div class="drop-icon-wrap"><i class="fas fa-cloud-arrow-up drop-icon"></i></div>
+            <p class="drop-title">Drag & drop files here</p>
+            <p class="drop-sub">or click to browse</p>
+            <div class="format-chips">
+              <span class="chip chip-red">PDF</span>
+              <span class="chip chip-blue">JPG / JPEG</span>
+              <span class="chip chip-green">PNG</span>
+            </div>
+          </div>
+        </div>
+        <div id="fileList" class="file-list hidden"></div>
+      </div>
+    </div>
+
+    <div class="form-actions">
+      <a href="{{ url_for('dashboard') }}" class="btn btn-ghost btn-lg">Cancel</a>
+      <button type="submit" class="btn btn-primary btn-lg" id="submitBtn">
+        <i class="fas fa-folder-plus"></i> Create Folder
+      </button>
+    </div>
+  </form>
+</div>
+</div>
+{% endblock %}
+{% block scripts %}
+<script src="{{ url_for('static', filename='js/upload.js') }}"></script>
+{% endblock %}

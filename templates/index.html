@@ -1,0 +1,121 @@
+{% extends "base.html" %}
+{% block title %}SecureVault — Your documents, sealed{% endblock %}
+{% block content %}
+
+<div class="hero">
+  <div class="wrap hero__grid">
+    <div>
+      <div class="eyebrow">Document custody, done properly</div>
+      <h1>Your papers, <em>sealed</em> and on call.</h1>
+      <p class="lede">Aadhaar, PAN, passport, degrees, medical records — stored once, opened by a scan, and never shown to anyone without your say-so.</p>
+      <div class="hero__actions">
+        {% if user %}
+          <a href="{{ url_for('dashboard') }}" class="btn btn-primary btn-lg"><i class="fas fa-grip"></i> Go to Dashboard</a>
+          <a href="{{ url_for('create_vault') }}" class="btn btn-outline-light btn-lg"><i class="fas fa-plus"></i> New Folder</a>
+        {% else %}
+          <a href="{{ url_for('register') }}" class="btn btn-primary btn-lg"><i class="fas fa-lock"></i> Create a vault — free</a>
+          <a href="{{ url_for('login') }}" class="btn btn-outline-light btn-lg">Log in →</a>
+        {% endif %}
+      </div>
+      <div class="hero__note">No card required · Files never leave authenticated routes</div>
+    </div>
+
+    <div class="hero__card-wrap">
+      <div class="doc-card">
+        <div class="doc-card__body">
+          <div class="doc-card__kicker">Vault · Family Records</div>
+          <div class="doc-card__title">Passport.pdf</div>
+          <div class="doc-card__rows">
+            <div class="doc-card__row"><span>Access</span><span>One-time</span></div>
+            <div class="doc-card__row"><span>Views used</span><span>0 / 1</span></div>
+            <div class="doc-card__row"><span>Uploaded</span><span>12 Aug 2026</span></div>
+          </div>
+          <div class="seal">Verified<br>Owner</div>
+        </div>
+        <div class="doc-card__stub">
+          <div class="qr">
+            <i></i><i></i><i></i><i></i><i></i><i></i>
+            <i></i><i></i><i></i><i></i><i></i><i></i>
+            <i></i><i></i><i></i><i></i><i></i><i></i>
+            <i></i><i></i><i></i><i></i><i></i><i></i>
+          </div>
+          <small>Scan to<br>open</small>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="stats">
+    <div class="wrap" style="display:grid; grid-template-columns:repeat(4,1fr);">
+      <div class="stat"><b>6</b><span>Access modes</span></div>
+      <div class="stat"><b>16 MB</b><span>Per file</span></div>
+      <div class="stat"><b>bcrypt</b><span>Password hashing</span></div>
+      <div class="stat"><b>&lt; 1s</b><span>Gate to document</span></div>
+    </div>
+  </div>
+</div>
+
+<section class="section" id="access">
+  <div class="wrap">
+    <div class="section__head">
+      <div class="eyebrow">How a document is guarded</div>
+      <h2>Every file picks its own terms.</h2>
+      <p>Set access per document, not per vault. A payslip can stay public inside a shared folder while your passport demands a one-time code.</p>
+    </div>
+    <div class="access-grid">
+      <div class="access-card">
+        <div class="access-card__code">01 · PUBLIC</div>
+        <h3>Open on scan</h3>
+        <p>No gate. Anyone with the link or QR sees it immediately — for documents that were never sensitive to begin with.</p>
+      </div>
+      <div class="access-card">
+        <div class="access-card__code">02 · CODE</div>
+        <h3>Access code</h3>
+        <p>A short code you hand out separately from the link, hashed the same way as your vault password.</p>
+      </div>
+      <div class="access-card">
+        <div class="access-card__code">03 · ONE-TIME</div>
+        <h3>Single view</h3>
+        <p>The link burns itself after one open — granted atomically, so two people can't both slip through on the same instant.</p>
+      </div>
+      <div class="access-card">
+        <div class="access-card__code">04 · EXPIRING</div>
+        <h3>Time-boxed</h3>
+        <p>Set an expiry in hours. After it passes, the gate shows "expired" — no need to remember to revoke it.</p>
+      </div>
+      <div class="access-card">
+        <div class="access-card__code">05 · LIMIT</div>
+        <h3>Capped views</h3>
+        <p>Allow exactly N opens, then the document quietly stops answering the door.</p>
+      </div>
+      <div class="access-card">
+        <div class="access-card__code">06 · PASSWORD</div>
+        <h3>Vault password</h3>
+        <p>Requires the same master password that guards the whole folder — for documents that should stay with the family.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="callout" id="ai">
+  <div class="wrap callout__grid">
+    <div>
+      <div class="eyebrow">Vault AI</div>
+      <h2>Ask your documents a question.</h2>
+      <p>Vault AI reads only what you've uploaded, cites the source file, and says so plainly when an answer isn't in there — never a guess dressed up as one.</p>
+      {% if user %}
+        <a href="{{ url_for('vault_ai') }}" class="btn btn-outline-light">Open Vault AI →</a>
+      {% else %}
+        <a href="{{ url_for('register') }}" class="btn btn-outline-light">Create a vault to try it →</a>
+      {% endif %}
+    </div>
+    <div>
+      <div class="chatline"><b>You —</b> what's my semester 4 CGPA?</div>
+      <div class="chatline answer"><b>Vault AI —</b> 8.42, from Semester4_Marksheet.pdf.</div>
+      <div class="chatline"><b>You —</b> when does my passport expire?</div>
+      <div class="chatline answer"><b>Vault AI —</b> I couldn't find this information in your documents.</div>
+    </div>
+  </div>
+</section>
+
+{% endblock %}
