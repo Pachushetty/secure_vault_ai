@@ -10,8 +10,9 @@
       <strong style="color: var(--brass, #a9822f);">{{ email }}</strong>
     </p>
 
-    <form method="POST" class="gate-form" id="verifyEmailForm" autocomplete="off">
+    <form method="POST" action="{{ url_for('verify_email') }}" class="gate-form" id="verifyEmailForm" autocomplete="off">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <input type="hidden" name="email" value="{{ email }}">
       <div class="form-group" style="text-align:left; margin-bottom:1.5rem;">
         <label class="form-label" style="display:flex; justify-content:space-between;">
           <span><i class="fas fa-hashtag"></i> 6-Digit Code</span>
@@ -26,7 +27,7 @@
         </div>
       </div>
       <button type="submit" class="btn btn-primary btn-full btn-lg" id="verifyEmailBtn">
-        <i class="fas fa-circle-check"></i> Verify & Activate Account
+        <i class="fas fa-circle-check"></i> Verify Email
       </button>
     </form>
 
@@ -34,8 +35,9 @@
 
     <form method="POST" action="{{ url_for('resend_verification_code') }}" id="resendEmailForm" style="margin-bottom: 0.5rem;">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <input type="hidden" name="email" value="{{ email }}">
       <button type="submit" class="btn btn-outline btn-full" id="resendEmailBtn">
-        <i class="fas fa-rotate-right"></i> Resend Verification Code
+        <i class="fas fa-rotate-right"></i> Resend Code
       </button>
     </form>
 
