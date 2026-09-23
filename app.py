@@ -4,9 +4,7 @@ import secrets
 import re
 import shutil
 import logging
-import smtplib
-import email.mime.multipart
-import email.mime.text
+import resend
 from urllib.parse import urlparse
 from datetime import datetime, timedelta
 from functools import wraps
@@ -91,8 +89,8 @@ MAX_FILE_SIZE = MAX_FILE_MB * 1024 * 1024
 # directly â€” but every credential that comes back is still verified
 # server-side (see google_signin() below) before anyone is logged in.
 GOOGLE_CLIENT_ID   = os.environ.get('GOOGLE_CLIENT_ID', '')
-MAIL_USERNAME      = os.environ.get('MAIL_USERNAME', '')
-MAIL_APP_PASSWORD  = os.environ.get('MAIL_APP_PASSWORD', '')
+RESEND_API_KEY     = os.environ.get('RESEND_API_KEY', '')
+MAIL_FROM          = os.environ.get('MAIL_FROM', '')
 
 # Terms of Service / Privacy Policy — bump TERMS_VERSION whenever the legal
 # text materially changes, so we know which version a given user agreed to.
@@ -643,9 +641,15 @@ def register():
             "INSERT INTO email_verification_codes (email, code_hash, expires_at) VALUES (%s, %s, %s)",
             (email, code_hash, expires)
         )
-        db.commit()
 
-        _send_verification_email(email, code)
+        email_sent = _send_verification_email(email, code)
+        if not email_sent:
+            db.rollback()
+            app.logger.error("Verification email could not be sent")
+            flash("We could not send the verification email. Please try again later.", "error")
+            return redirect(url_for("register"))
+
+        db.commit()
         log_audit_event('registration_initiated', actor_email=email)
 
         session['verification_email'] = email
@@ -742,8 +746,14 @@ def resend_verification_code():
         "INSERT INTO email_verification_codes (email, code_hash, expires_at) VALUES (%s, %s, %s)",
         (verification_email, code_hash, expires)
     )
+    email_sent = _send_verification_email(verification_email, code)
+    if not email_sent:
+        db.rollback()
+        app.logger.error("Verification email could not be sent on resend")
+        flash("We could not send the verification email. Please try again later.", "error")
+        return redirect(url_for('verify_email'))
+
     db.commit()
-    _send_verification_email(verification_email, code)
     log_audit_event('verification_code_resend', actor_email=verification_email)
 
     flash('A fresh verification code has been sent to your email.', 'success')
@@ -791,9 +801,14 @@ def login():
                 from datetime import timezone
                 expires   = datetime.now(timezone.utc) + timedelta(minutes=10)
                 cur.execute("INSERT INTO email_verification_codes (email, code_hash, expires_at) VALUES (%s, %s, %s)", (email, code_hash, expires))
-                db.commit()
-                _send_verification_email(email, code)
+                email_sent = _send_verification_email(email, code)
+                if not email_sent:
+                    db.rollback()
+                    app.logger.error("Verification email could not be sent during login")
+                    flash("We could not send the verification email. Please try again later.", "error")
+                    return render_template('login.html')
 
+                db.commit()
                 session['verification_email'] = email
                 flash('Please verify your email before signing in. A fresh verification code has been sent.', 'error')
                 return redirect(url_for('verify_email'))
@@ -823,17 +838,16 @@ def logout():
     return redirect(url_for('login'))
 
 
-# â”€â”€ Registration Email Helper â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# ── Registration Email Helper ────────────────────────────────────────────────
 def _send_verification_email(to_email: str, code: str) -> bool:
-    """Send a 6-digit registration verification code via Gmail SMTP."""
-    if not MAIL_USERNAME or not MAIL_APP_PASSWORD:
-        app.logger.warning('MAIL_USERNAME or MAIL_APP_PASSWORD not set â€” skipping email send')
+    """Send a 6-digit registration verification code via Resend HTTPS API."""
+    api_key = os.environ.get('RESEND_API_KEY') or RESEND_API_KEY
+    mail_from = os.environ.get('MAIL_FROM') or MAIL_FROM
+    if not api_key or not mail_from:
+        app.logger.error("RESEND_API_KEY or MAIL_FROM is not configured")
         return False
     try:
-        msg = email.mime.multipart.MIMEMultipart('alternative')
-        msg['Subject'] = 'SecureVault â€” Verify Your Email Address'
-        msg['From']    = f'SecureVault <{MAIL_USERNAME}>'
-        msg['To']      = to_email
+        resend.api_key = api_key
 
         text_body = (
             f'Welcome to SecureVault!\n\n'
@@ -841,7 +855,7 @@ def _send_verification_email(to_email: str, code: str) -> bool:
             'This code expires in 10 minutes.\n\n'
             'Enter this code on the verification screen to activate your SecureVault account.\n'
             'Never share this code with anyone.\n\n'
-            'â€” SecureVault Team'
+            '— SecureVault Team'
         )
         html_body = f"""
 <!DOCTYPE html>
@@ -899,39 +913,36 @@ def _send_verification_email(to_email: str, code: str) -> bool:
   </table>
 </body>
 </html>"""
-        msg.attach(email.mime.text.MIMEText(text_body, 'plain'))
-        msg.attach(email.mime.text.MIMEText(html_body, 'html'))
-
-        with smtplib.SMTP('smtp.gmail.com', 587) as smtp:
-            smtp.ehlo()
-            smtp.starttls()
-            smtp.login(MAIL_USERNAME, MAIL_APP_PASSWORD)
-            smtp.sendmail(MAIL_USERNAME, to_email, msg.as_string())
+        resend.Emails.send({
+            "from": mail_from,
+            "to": [to_email],
+            "subject": "SecureVault — Verify Your Email Address",
+            "text": text_body,
+            "html": html_body,
+        })
         return True
     except Exception as exc:
-        app.logger.error('SMTP verification send failed: %s', type(exc).__name__)
+        app.logger.error("Resend email failed: %s", type(exc).__name__)
         return False
 
-# â”€â”€ Forgot Password / Password Reset â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-# Email helper â€” uses Gmail SMTP with an App Password (never the real
-# Gmail password). Configure MAIL_USERNAME and MAIL_APP_PASSWORD in .env.
+# ── Forgot Password / Password Reset ──────────────────────────────────────────
+# Email helper — uses Resend HTTPS API. Configure RESEND_API_KEY and MAIL_FROM in .env.
 def _send_reset_email(to_email: str, code: str) -> bool:
-    """Send a 6-digit reset code via Gmail SMTP. Returns True on success."""
-    if not MAIL_USERNAME or not MAIL_APP_PASSWORD:
-        app.logger.warning('MAIL_USERNAME or MAIL_APP_PASSWORD not set â€” skipping email send')
+    """Send a 6-digit reset code via Resend HTTPS API. Returns True on success."""
+    api_key = os.environ.get('RESEND_API_KEY') or RESEND_API_KEY
+    mail_from = os.environ.get('MAIL_FROM') or MAIL_FROM
+    if not api_key or not mail_from:
+        app.logger.error("RESEND_API_KEY or MAIL_FROM is not configured")
         return False
     try:
-        msg = email.mime.multipart.MIMEMultipart('alternative')
-        msg['Subject'] = 'SecureVault â€” Password Reset Code'
-        msg['From']    = f'SecureVault <{MAIL_USERNAME}>'
-        msg['To']      = to_email
+        resend.api_key = api_key
 
         text_body = (
             f'Your SecureVault password reset code is: {code}\n\n'
             'This code expires in 10 minutes.\n\n'
             'If you did not request a password reset, ignore this email.\n'
             'Never share this code with anyone.\n\n'
-            'â€” SecureVault Security Team'
+            '— SecureVault Security Team'
         )
         html_body = f"""
 <!DOCTYPE html>
@@ -991,18 +1002,16 @@ def _send_reset_email(to_email: str, code: str) -> bool:
   </table>
 </body>
 </html>"""
-        msg.attach(email.mime.text.MIMEText(text_body, 'plain'))
-        msg.attach(email.mime.text.MIMEText(html_body, 'html'))
-
-        with smtplib.SMTP('smtp.gmail.com', 587) as smtp:
-            smtp.ehlo()
-            smtp.starttls()
-            smtp.login(MAIL_USERNAME, MAIL_APP_PASSWORD)
-            smtp.sendmail(MAIL_USERNAME, to_email, msg.as_string())
+        resend.Emails.send({
+            "from": mail_from,
+            "to": [to_email],
+            "subject": "SecureVault — Password Reset Code",
+            "text": text_body,
+            "html": html_body,
+        })
         return True
     except Exception as exc:
-        # Log the exception type only â€” never log SMTP credentials or the code
-        app.logger.error('SMTP send failed: %s', type(exc).__name__)
+        app.logger.error("Resend email failed: %s", type(exc).__name__)
         return False
 
 

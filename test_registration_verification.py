@@ -2,6 +2,7 @@
 Automated unit & integration test for Registration Email Verification in SecureVault.
 """
 import unittest
+from unittest.mock import patch
 from datetime import datetime, timedelta, timezone
 import bcrypt
 from werkzeug.security import check_password_hash
@@ -30,7 +31,8 @@ class TestRegistrationEmailVerification(unittest.TestCase):
             cur.execute("DELETE FROM users WHERE email LIKE 'testreg_%@example.com'")
             db.commit()
 
-    def test_01_registration_flow_and_verification(self):
+    @patch('app._send_verification_email', return_value=True)
+    def test_01_registration_flow_and_verification(self, mock_email):
         email = "testreg_user1@example.com"
         password = "SecurePassword123"
         name = "New Verified User"
@@ -40,7 +42,8 @@ class TestRegistrationEmailVerification(unittest.TestCase):
             'email': email,
             'name': name,
             'password': password,
-            'confirm_password': password
+            'confirm_password': password,
+            'agree_terms': 'on'
         }, follow_redirects=True)
         self.assertEqual(res_reg.status_code, 200)
         self.assertIn(b'Verify your email', res_reg.data)
