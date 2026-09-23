@@ -141,5 +141,49 @@ class TestResendEmailDelivery(unittest.TestCase):
             cur.execute("DELETE FROM users WHERE email='resend_ok@example.com'")
             db.commit()
 
+    @patch('resend.Emails.send')
+    def test_09_api_key_whitespace_and_quote_stripping(self, mock_send):
+        """API key and sender with spaces/quotes are cleanly stripped."""
+        mock_send.return_value = {'id': 'msg_stripped'}
+        with patch.dict(os.environ, {'RESEND_API_KEY': ' "re_spacedkey123" \n', 'MAIL_FROM': " 'onboarding@resend.dev' "}):
+            import resend
+            result = _send_verification_email('testuser@example.com', '123456')
+            self.assertTrue(result)
+            self.assertEqual(resend.api_key, 're_spacedkey123')
+            self.assertEqual(mock_send.call_args[0][0]['from'], 'onboarding@resend.dev')
+
+    def test_10_resend_error_safe_logging_and_redaction(self):
+        """API keys are never logged in clear text even if present in Resend exceptions."""
+        from app import _safe_log_resend_error
+        import resend.exceptions as ex
+        fake_key = 're_1234567890abcdef'
+        fake_exc = ex.ResendError(
+            code=403,
+            error_type="restricted_api_key",
+            message=f"Key {fake_key} cannot send to recipient",
+            suggested_action=f"Verify domain or use valid key {fake_key}"
+        )
+        with self.assertLogs('app', level='ERROR') as cm:
+            clean_msg = _safe_log_resend_error(fake_exc, api_key=fake_key)
+            self.assertNotIn(fake_key, cm.output[0])
+            self.assertIn('[REDACTED_API_KEY]', cm.output[0])
+            self.assertIn('restricted_api_key', cm.output[0])
+            self.assertIn('403', cm.output[0])
+
+    @patch('app._send_verification_email', return_value=False)
+    def test_11_registration_flash_surfaces_clear_error(self, mock_email):
+        """Registration failure flash shows clear reason."""
+        import app as app_mod
+        app_mod._last_email_error = "The from field must be an email address from a verified domain or onboarding@resend.dev."
+        res = self.client.post('/register', data={
+            'email': 'resend_reason_test@example.com',
+            'name': 'Reason Test',
+            'password': 'SecurePassword123',
+            'confirm_password': 'SecurePassword123',
+            'agree_terms': 'on'
+        }, follow_redirects=True)
+        self.assertEqual(res.status_code, 200)
+        self.assertIn(b'verified domain', res.data)
+
 if __name__ == '__main__':
     unittest.main()

@@ -89,8 +89,8 @@ MAX_FILE_SIZE = MAX_FILE_MB * 1024 * 1024
 # directly â€” but every credential that comes back is still verified
 # server-side (see google_signin() below) before anyone is logged in.
 GOOGLE_CLIENT_ID   = os.environ.get('GOOGLE_CLIENT_ID', '')
-RESEND_API_KEY     = os.environ.get('RESEND_API_KEY', '')
-MAIL_FROM          = os.environ.get('MAIL_FROM', '')
+RESEND_API_KEY     = os.environ.get('RESEND_API_KEY', '').strip().strip('"\'')
+MAIL_FROM          = os.environ.get('MAIL_FROM', '').strip().strip('"\'')
 
 # Terms of Service / Privacy Policy — bump TERMS_VERSION whenever the legal
 # text materially changes, so we know which version a given user agreed to.
@@ -645,8 +645,9 @@ def register():
         email_sent = _send_verification_email(email, code)
         if not email_sent:
             db.rollback()
-            app.logger.error("Verification email could not be sent")
-            flash("We could not send the verification email. Please try again later.", "error")
+            err_reason = _last_email_error or "Please check your email configuration and try again."
+            app.logger.error("Verification email could not be sent to %s: %s", email, err_reason)
+            flash(f"Could not send verification email: {err_reason}", "error")
             return redirect(url_for("register"))
 
         db.commit()
@@ -755,9 +756,10 @@ def resend_verification_code():
     email_sent = _send_verification_email(verification_email, code)
     if not email_sent:
         db.rollback()
-        app.logger.error("Verification email could not be sent on resend")
-        flash("We could not send the verification email. Please try again later.", "error")
-        return redirect(url_for('verify_email'))
+        err_reason = _last_email_error or "Please try again later."
+        app.logger.error("Verification email could not be sent on resend: %s", err_reason)
+        flash(f"Could not resend verification email: {err_reason}", "error")
+        return redirect(url_for('verify_email', email=verification_email))
 
     db.commit()
     log_audit_event('verification_code_resend', actor_email=verification_email)
@@ -845,13 +847,53 @@ def logout():
 
 
 # ── Registration Email Helper ────────────────────────────────────────────────
+_last_email_error = ""
+
+def _safe_log_resend_error(exc: Exception, api_key: str = "") -> str:
+    """Log Resend error details safely without leaking API keys or secrets."""
+    err_type = getattr(exc, 'error_type', type(exc).__name__)
+    err_code = getattr(exc, 'code', '')
+    err_msg = getattr(exc, 'message', str(exc))
+    suggestion = getattr(exc, 'suggested_action', '')
+
+    clean_msg = str(err_msg) if err_msg else type(exc).__name__
+    clean_sug = str(suggestion) if suggestion else ""
+
+    # Redact any API keys or credentials if present in message or suggestion
+    if api_key and len(api_key) > 4:
+        clean_msg = clean_msg.replace(api_key, "[REDACTED_API_KEY]")
+        clean_sug = clean_sug.replace(api_key, "[REDACTED_API_KEY]")
+    clean_msg = re.sub(r're_[a-zA-Z0-9_]{10,}', '[REDACTED_API_KEY]', clean_msg)
+    clean_sug = re.sub(r're_[a-zA-Z0-9_]{10,}', '[REDACTED_API_KEY]', clean_sug)
+
+    log_detail = f"Resend email failed: error_type={err_type}, code={err_code}, message='{clean_msg}'"
+    if clean_sug:
+        log_detail += f", suggested_action='{clean_sug}'"
+
+    app.logger.error(log_detail)
+    return clean_msg
+
 def _send_verification_email(to_email: str, code: str) -> bool:
     """Send a 6-digit registration verification code via Resend HTTPS API."""
-    api_key = os.environ.get('RESEND_API_KEY') or RESEND_API_KEY
-    mail_from = os.environ.get('MAIL_FROM') or MAIL_FROM
+    global _last_email_error
+    _last_email_error = ""
+
+    api_key = (os.environ.get('RESEND_API_KEY') or RESEND_API_KEY or '').strip().strip('"\'')
+    mail_from = (os.environ.get('MAIL_FROM') or MAIL_FROM or '').strip().strip('"\'')
     if not api_key or not mail_from:
+        _last_email_error = "RESEND_API_KEY or MAIL_FROM is not configured"
         app.logger.error("RESEND_API_KEY or MAIL_FROM is not configured")
         return False
+
+    # Check for unverified public webmail domains in MAIL_FROM
+    mail_from_addr = mail_from.split('<')[-1].replace('>', '').strip().lower()
+    if any(mail_from_addr.endswith(f"@{domain}") for domain in ('gmail.com', 'yahoo.com', 'hotmail.com', 'outlook.com')):
+        app.logger.warning(
+            "MAIL_FROM '%s' uses a public webmail domain. Resend requires sending from onboarding@resend.dev "
+            "or a custom domain verified in your Resend dashboard (https://resend.com/domains).",
+            mail_from
+        )
+
     try:
         resend.api_key = api_key
 
@@ -919,27 +961,42 @@ def _send_verification_email(to_email: str, code: str) -> bool:
   </table>
 </body>
 </html>"""
-        resend.Emails.send({
+        res = resend.Emails.send({
             "from": mail_from,
-            "to": [to_email],
+            "to": [to_email.strip().lower()],
             "subject": "SecureVault — Verify Your Email Address",
             "text": text_body,
             "html": html_body,
         })
+        app.logger.info("Resend verification email sent to %s (id: %s)", to_email, getattr(res, 'id', 'ok') if not isinstance(res, dict) else res.get('id', 'ok'))
         return True
     except Exception as exc:
-        app.logger.error("Resend email failed: %s", type(exc).__name__)
+        _last_email_error = _safe_log_resend_error(exc, api_key=api_key)
         return False
 
 # ── Forgot Password / Password Reset ──────────────────────────────────────────
 # Email helper — uses Resend HTTPS API. Configure RESEND_API_KEY and MAIL_FROM in .env.
 def _send_reset_email(to_email: str, code: str) -> bool:
     """Send a 6-digit reset code via Resend HTTPS API. Returns True on success."""
-    api_key = os.environ.get('RESEND_API_KEY') or RESEND_API_KEY
-    mail_from = os.environ.get('MAIL_FROM') or MAIL_FROM
+    global _last_email_error
+    _last_email_error = ""
+
+    api_key = (os.environ.get('RESEND_API_KEY') or RESEND_API_KEY or '').strip().strip('"\'')
+    mail_from = (os.environ.get('MAIL_FROM') or MAIL_FROM or '').strip().strip('"\'')
     if not api_key or not mail_from:
+        _last_email_error = "RESEND_API_KEY or MAIL_FROM is not configured"
         app.logger.error("RESEND_API_KEY or MAIL_FROM is not configured")
         return False
+
+    # Check for unverified public webmail domains in MAIL_FROM
+    mail_from_addr = mail_from.split('<')[-1].replace('>', '').strip().lower()
+    if any(mail_from_addr.endswith(f"@{domain}") for domain in ('gmail.com', 'yahoo.com', 'hotmail.com', 'outlook.com')):
+        app.logger.warning(
+            "MAIL_FROM '%s' uses a public webmail domain. Resend requires sending from onboarding@resend.dev "
+            "or a custom domain verified in your Resend dashboard (https://resend.com/domains).",
+            mail_from
+        )
+
     try:
         resend.api_key = api_key
 
@@ -1008,16 +1065,17 @@ def _send_reset_email(to_email: str, code: str) -> bool:
   </table>
 </body>
 </html>"""
-        resend.Emails.send({
+        res = resend.Emails.send({
             "from": mail_from,
-            "to": [to_email],
+            "to": [to_email.strip().lower()],
             "subject": "SecureVault — Password Reset Code",
             "text": text_body,
             "html": html_body,
         })
+        app.logger.info("Resend reset email sent to %s (id: %s)", to_email, getattr(res, 'id', 'ok') if not isinstance(res, dict) else res.get('id', 'ok'))
         return True
     except Exception as exc:
-        app.logger.error("Resend email failed: %s", type(exc).__name__)
+        _last_email_error = _safe_log_resend_error(exc, api_key=api_key)
         return False
 
 
