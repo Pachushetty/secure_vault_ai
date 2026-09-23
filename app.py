@@ -902,7 +902,7 @@ def _send_verification_email(to_email: str, code: str) -> bool:
         msg.attach(email.mime.text.MIMEText(text_body, 'plain'))
         msg.attach(email.mime.text.MIMEText(html_body, 'html'))
 
-        with smtplib.SMTP('smtp.gmail.com', 587) as smtp:
+        with smtplib.SMTP('smtp.gmail.com', 587, timeout=10) as smtp:
             smtp.ehlo()
             smtp.starttls()
             smtp.login(MAIL_USERNAME, MAIL_APP_PASSWORD)
