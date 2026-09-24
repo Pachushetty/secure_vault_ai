@@ -32,7 +32,7 @@ Add the variables to your `.env` file:
 
 ```ini
 RESEND_API_KEY=re_your_api_key_here
-MAIL_FROM=onboarding@resend.dev
+MAIL_FROM=SecureVault AI <noreply@securevault.de5.net>
 ```
 
 > **Security Note:** Never commit your `.env` file to Git. The `.gitignore` file excludes `.env`.
@@ -41,9 +41,9 @@ MAIL_FROM=onboarding@resend.dev
 In your Render Dashboard:
 1. Open your Web Service settings.
 2. Navigate to **Environment**.
-3. Add the two environment variables:
+3. Add the environment variables:
    - `RESEND_API_KEY` = `re_...`
-   - `MAIL_FROM` = `your_verified_sender@example.com` (or `onboarding@resend.dev` for testing)
+   - `MAIL_FROM` = `SecureVault AI <noreply@securevault.de5.net>`
 4. Save changes. Render will automatically redeploy with the new settings.
 
 ---

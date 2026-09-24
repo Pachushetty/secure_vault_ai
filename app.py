@@ -90,7 +90,7 @@ MAX_FILE_SIZE = MAX_FILE_MB * 1024 * 1024
 # server-side (see google_signin() below) before anyone is logged in.
 GOOGLE_CLIENT_ID   = os.environ.get('GOOGLE_CLIENT_ID', '')
 RESEND_API_KEY     = os.environ.get('RESEND_API_KEY', '').strip().strip('"\'')
-MAIL_FROM          = os.environ.get('MAIL_FROM', '').strip().strip('"\'')
+MAIL_FROM          = (os.environ.get('MAIL_FROM') or 'SecureVault AI <noreply@securevault.de5.net>').strip().strip('"\'')
 
 # Terms of Service / Privacy Policy — bump TERMS_VERSION whenever the legal
 # text materially changes, so we know which version a given user agreed to.

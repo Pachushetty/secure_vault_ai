@@ -185,5 +185,29 @@ class TestResendEmailDelivery(unittest.TestCase):
         self.assertEqual(res.status_code, 200)
         self.assertIn(b'verified domain', res.data)
 
+    @patch('resend.Emails.send')
+    def test_12_verification_email_uses_securevault_sender_address(self, mock_send):
+        """Verification emails use SecureVault AI <noreply@securevault.de5.net> by default."""
+        mock_send.return_value = {'id': 'msg_sender_verify'}
+        with patch.dict(os.environ, {'RESEND_API_KEY': 're_testkey123', 'MAIL_FROM': 'SecureVault AI <noreply@securevault.de5.net>'}):
+            result = _send_verification_email('newuser@example.com', '456789')
+            self.assertTrue(result)
+            mock_send.assert_called_once()
+            call_args = mock_send.call_args[0][0]
+            self.assertEqual(call_args['from'], 'SecureVault AI <noreply@securevault.de5.net>')
+            self.assertEqual(call_args['to'], ['newuser@example.com'])
+
+    @patch('resend.Emails.send')
+    def test_13_reset_email_uses_securevault_sender_address(self, mock_send):
+        """Password reset emails use SecureVault AI <noreply@securevault.de5.net> by default."""
+        mock_send.return_value = {'id': 'msg_sender_reset'}
+        with patch.dict(os.environ, {'RESEND_API_KEY': 're_testkey123', 'MAIL_FROM': 'SecureVault AI <noreply@securevault.de5.net>'}):
+            result = _send_reset_email('newuser@example.com', '987654')
+            self.assertTrue(result)
+            mock_send.assert_called_once()
+            call_args = mock_send.call_args[0][0]
+            self.assertEqual(call_args['from'], 'SecureVault AI <noreply@securevault.de5.net>')
+            self.assertEqual(call_args['to'], ['newuser@example.com'])
+
 if __name__ == '__main__':
     unittest.main()
