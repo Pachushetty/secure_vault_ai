@@ -661,7 +661,7 @@ def register():
 
         session['verification_email'] = email
         flash('A 6-digit verification code has been sent to your email. Enter it below to activate your account.', 'success')
-        return redirect(url_for('verify_email', email=email))
+        return redirect(url_for('verify_email'))
 
     return render_template('register.html')
 
@@ -673,10 +673,7 @@ def verify_email():
     if get_current_user():
         return redirect(url_for('dashboard'))
 
-    verification_email = session.get('verification_email') or request.args.get('email', '').strip().lower() or request.form.get('email', '').strip().lower()
-    if verification_email and valid_email(verification_email):
-        session['verification_email'] = verification_email
-
+    verification_email = session.get('verification_email')
     if not verification_email:
         flash('No pending registration session found. Please register or log in.', 'error')
         return redirect(url_for('register'))
@@ -740,10 +737,7 @@ def verify_email():
 @app.route('/resend-verification-code', methods=['POST'])
 @limiter.limit('3 per minute;6 per hour')
 def resend_verification_code():
-    verification_email = session.get('verification_email') or request.form.get('email', '').strip().lower() or request.args.get('email', '').strip().lower()
-    if verification_email and valid_email(verification_email):
-        session['verification_email'] = verification_email
-
+    verification_email = session.get('verification_email')
     if not verification_email:
         flash('Session expired. Please register again.', 'error')
         return redirect(url_for('register'))
@@ -765,13 +759,13 @@ def resend_verification_code():
         err_reason = _last_email_error or "Please try again later."
         app.logger.error("Verification email could not be sent on resend: %s", err_reason)
         flash(f"Could not resend verification email: {err_reason}", "error")
-        return redirect(url_for('verify_email', email=verification_email))
+        return redirect(url_for('verify_email'))
 
     db.commit()
     log_audit_event('verification_code_resend', actor_email=verification_email)
 
     flash('A fresh verification code has been sent to your email.', 'success')
-    return redirect(url_for('verify_email', email=verification_email))
+    return redirect(url_for('verify_email'))
 
 
 # â”€â”€ Login â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
@@ -825,7 +819,7 @@ def login():
                 db.commit()
                 session['verification_email'] = email
                 flash('Please verify your email before signing in. A fresh verification code has been sent.', 'error')
-                return redirect(url_for('verify_email', email=email))
+                return redirect(url_for('verify_email'))
 
             session.permanent = True
             session['user_email'] = email
