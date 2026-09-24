@@ -9,7 +9,7 @@ from urllib.parse import urlparse
 from datetime import datetime, timedelta
 from functools import wraps
 from flask import (Flask, render_template, request, redirect, url_for,
-                   session, flash, send_file, abort, jsonify)
+                   session, flash, send_file, send_from_directory, abort, jsonify)
 from werkzeug.security import generate_password_hash, check_password_hash
 from werkzeug.utils import secure_filename
 from flask_wtf.csrf import CSRFProtect
@@ -557,6 +557,12 @@ def _auth_share(vault_id, share_id):
         abort(404)
 
 # â”€â”€ Home â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# ── Google Search Console Verification ────────────────────────────────────────
+@app.route('/googlebf50c296d7f840e5.html')
+def google_verification():
+    return send_from_directory(BASE_DIR, 'googlebf50c296d7f840e5.html')
+
+
 @app.route('/')
 def index():
     user = get_current_user()
