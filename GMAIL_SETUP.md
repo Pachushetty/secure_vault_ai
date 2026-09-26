@@ -32,7 +32,7 @@ Add the variables to your `.env` file:
 
 ```ini
 RESEND_API_KEY=re_your_api_key_here
-MAIL_FROM=SecureVault AI <noreply@securevault.de5.net>
+MAIL_FROM=SecureVault AI <support@securevault.de5.net>
 ```
 
 > **Security Note:** Never commit your `.env` file to Git. The `.gitignore` file excludes `.env`.
@@ -43,7 +43,7 @@ In your Render Dashboard:
 2. Navigate to **Environment**.
 3. Add the environment variables:
    - `RESEND_API_KEY` = `re_...`
-   - `MAIL_FROM` = `SecureVault AI <noreply@securevault.de5.net>`
+   - `MAIL_FROM` = `SecureVault AI <support@securevault.de5.net>`
 4. Save changes. Render will automatically redeploy with the new settings.
 
 ---

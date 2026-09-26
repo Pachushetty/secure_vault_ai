@@ -84,13 +84,13 @@ class TestCompleteRegistrationFlow(unittest.TestCase):
             # Step 2: Verification email sent via Resend with exact sender address
             mock_send.assert_called_once()
             call_kwargs = mock_send.call_args[0][0]
-            self.assertEqual(call_kwargs['from'], 'SecureVault AI <noreply@securevault.de5.net>')
+            self.assertEqual(call_kwargs['from'], 'SecureVault AI <support@securevault.de5.net>')
             self.assertEqual(call_kwargs['to'], [self.test_email])
-            self.assertIn('SecureVault \u2014 Verify Your Email Address', call_kwargs['subject'])
+            self.assertEqual(call_kwargs['subject'], 'Your SecureVault verification code')
 
             # Step 3: Extract the 6-digit code dispatched to recipient
             import re
-            match = re.search(r'Your 6-digit verification code is:\s*(\d{6})', call_kwargs['text'])
+            match = re.search(r'Your verification code is:\s*(\d{6})', call_kwargs['text'])
             self.assertIsNotNone(match, "Dispatched email must contain the 6-digit code")
             six_digit_code = match.group(1)
 

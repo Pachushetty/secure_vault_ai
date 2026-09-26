@@ -90,7 +90,7 @@ MAX_FILE_SIZE = MAX_FILE_MB * 1024 * 1024
 # server-side (see google_signin() below) before anyone is logged in.
 GOOGLE_CLIENT_ID   = os.environ.get('GOOGLE_CLIENT_ID', '')
 RESEND_API_KEY     = os.environ.get('RESEND_API_KEY', '').strip().strip('"\'')
-MAIL_FROM          = (os.environ.get('MAIL_FROM') or 'SecureVault AI <noreply@securevault.de5.net>').strip().strip('"\'')
+MAIL_FROM          = (os.environ.get('MAIL_FROM') or 'SecureVault AI <support@securevault.de5.net>').strip().strip('"\'')
 
 # Terms of Service / Privacy Policy — bump TERMS_VERSION whenever the legal
 # text materially changes, so we know which version a given user agreed to.
@@ -898,73 +898,31 @@ def _send_verification_email(to_email: str, code: str) -> bool:
         resend.api_key = api_key
 
         text_body = (
-            f'Welcome to SecureVault!\n\n'
-            f'Your 6-digit verification code is: {code}\n\n'
-            'This code expires in 10 minutes.\n\n'
-            'Enter this code on the verification screen to activate your SecureVault account.\n'
-            'Never share this code with anyone.\n\n'
-            '— SecureVault Team'
+            "Hello,\n\n"
+            "You requested to create a SecureVault account.\n\n"
+            f"Your verification code is: {code}\n\n"
+            "This code expires in 10 minutes. Enter it on the SecureVault verification page to complete registration.\n\n"
+            "If you did not request this code, you can ignore this email.\n\n"
+            "SecureVault AI Support"
         )
-        html_body = f"""
-<!DOCTYPE html>
+        html_body = f"""<!DOCTYPE html>
 <html>
-<body style="margin:0;padding:0;background:#080e16;font-family:'IBM Plex Sans',Arial,sans-serif;">
-  <table width="100%" cellpadding="0" cellspacing="0" style="background:#080e16;padding:40px 0;">
-    <tr><td align="center">
-      <table width="520" cellpadding="0" cellspacing="0"
-             style="background:#0d1724;border:1px solid rgba(245,241,232,0.08);
-                    border-radius:16px;overflow:hidden;">
-        <tr>
-          <td style="background:#0d1724;padding:32px 40px 24px;
-                     border-bottom:1px solid rgba(245,241,232,0.07);">
-            <p style="margin:0;font-size:22px;font-weight:600;color:#f5f1e8;letter-spacing:-0.02em;">
-              &#x1F512; SecureVault
-            </p>
-          </td>
-        </tr>
-        <tr>
-          <td style="padding:32px 40px;">
-            <p style="margin:0 0 8px;font-size:16px;font-weight:600;color:#f5f1e8;">Verify your email</p>
-            <p style="margin:0 0 28px;font-size:14px;color:rgba(245,241,232,0.5);line-height:1.6;">
-              Welcome to SecureVault! Use the verification code below to verify your email address and activate your account.
-            </p>
-            <div style="background:#131f30;border:1px solid rgba(169,130,47,0.3);
-                        border-radius:12px;padding:24px;text-align:center;margin-bottom:28px;">
-              <p style="margin:0 0 6px;font-size:11px;font-weight:600;
-                        letter-spacing:0.1em;text-transform:uppercase;color:#a9822f;">Your Verification Code</p>
-              <p style="margin:0;font-size:40px;font-weight:700;letter-spacing:0.12em;
-                        color:#f5f1e8;font-family:'Courier New',monospace;">{code}</p>
-            </div>
-            <div style="background:rgba(169,130,47,0.06);border:1px solid rgba(169,130,47,0.15);
-                        border-radius:8px;padding:14px 18px;margin-bottom:24px;">
-              <p style="margin:0;font-size:13px;color:rgba(245,241,232,0.6);line-height:1.5;">
-                &#x23F0; This code expires in <strong style="color:#f5f1e8;">10 minutes</strong>.
-              </p>
-            </div>
-            <div style="background:rgba(185,28,28,0.06);border:1px solid rgba(185,28,28,0.2);
-                        border-radius:8px;padding:14px 18px;">
-              <p style="margin:0;font-size:13px;color:rgba(245,241,232,0.55);line-height:1.5;">
-                &#x26A0; <strong style="color:#e05c52;">Do not share this code</strong> with anyone.
-              </p>
-            </div>
-          </td>
-        </tr>
-        <tr>
-          <td style="padding:16px 40px 28px;border-top:1px solid rgba(245,241,232,0.07);">
-            <p style="margin:0;font-size:12px;color:rgba(245,241,232,0.28);">
-              SecureVault &mdash; your documents, always sealed.
-            </p>
-          </td>
-        </tr>
-      </table>
-    </td></tr>
-  </table>
+<head>
+  <meta charset="utf-8">
+</head>
+<body style="font-family: Arial, sans-serif; font-size: 15px; line-height: 1.6; color: #333333; margin: 0; padding: 20px;">
+  <p style="margin: 0 0 16px;">Hello,</p>
+  <p style="margin: 0 0 16px;">You requested to create a SecureVault account.</p>
+  <p style="margin: 0 0 16px;">Your verification code is: <strong>{code}</strong></p>
+  <p style="margin: 0 0 16px;">This code expires in 10 minutes. Enter it on the SecureVault verification page to complete registration.</p>
+  <p style="margin: 0 0 16px;">If you did not request this code, you can ignore this email.</p>
+  <p style="margin: 0;">SecureVault AI Support</p>
 </body>
 </html>"""
         res = resend.Emails.send({
             "from": mail_from,
             "to": [to_email.strip().lower()],
-            "subject": "SecureVault — Verify Your Email Address",
+            "subject": "Your SecureVault verification code",
             "text": text_body,
             "html": html_body,
         })
