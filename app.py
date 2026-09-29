@@ -4,6 +4,11 @@ import secrets
 import re
 import shutil
 import logging
+import smtplib
+import ssl
+from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
+from email.utils import formataddr
 import resend
 from urllib.parse import urlparse
 from datetime import datetime, timedelta
@@ -91,6 +96,8 @@ MAX_FILE_SIZE = MAX_FILE_MB * 1024 * 1024
 GOOGLE_CLIENT_ID   = os.environ.get('GOOGLE_CLIENT_ID', '')
 RESEND_API_KEY     = os.environ.get('RESEND_API_KEY', '').strip().strip('"\'')
 MAIL_FROM          = (os.environ.get('MAIL_FROM') or 'SecureVault AI <support@securevault.de5.net>').strip().strip('"\'')
+GMAIL_USER         = (os.environ.get('GMAIL_USER') or os.environ.get('GMAIL_EMAIL') or os.environ.get('GMAIL_ADDRESS') or '').strip().strip('"\'')
+GMAIL_APP_PASSWORD = (os.environ.get('GMAIL_APP_PASSWORD') or os.environ.get('GMAIL_PASSWORD') or '').strip().strip('"\'')
 
 # Terms of Service / Privacy Policy — bump TERMS_VERSION whenever the legal
 # text materially changes, so we know which version a given user agreed to.
@@ -873,30 +880,42 @@ def _safe_log_resend_error(exc: Exception, api_key: str = "") -> str:
     app.logger.error(log_detail)
     return clean_msg
 
+def _safe_log_smtp_error(exc: Exception, password: str = "") -> str:
+    """Log Gmail SMTP error details safely without leaking credentials."""
+    err_type = type(exc).__name__
+    err_msg = str(exc)
+
+    clean_msg = err_msg if err_msg else err_type
+
+    # Redact password if present in message
+    if password and len(password) > 3:
+        clean_msg = clean_msg.replace(password, "[REDACTED_PASSWORD]")
+
+    if isinstance(exc, smtplib.SMTPAuthenticationError):
+        clean_msg = "Gmail SMTP authentication failed. Please check GMAIL_USER and GMAIL_APP_PASSWORD."
+    elif isinstance(exc, smtplib.SMTPConnectError):
+        clean_msg = f"Gmail SMTP connection failed: {clean_msg}"
+
+    app.logger.error("Gmail SMTP verification email failed: error_type=%s, message='%s'", err_type, clean_msg)
+    return clean_msg
+
+
 def _send_verification_email(to_email: str, code: str) -> bool:
-    """Send a 6-digit registration verification code via Resend HTTPS API."""
+    """Send a 6-digit registration verification code via Gmail SMTP (SSL port 465)."""
     global _last_email_error
     _last_email_error = ""
 
-    api_key = (os.environ.get('RESEND_API_KEY') or RESEND_API_KEY or '').strip().strip('"\'')
-    mail_from = (os.environ.get('MAIL_FROM') or MAIL_FROM or '').strip().strip('"\'')
-    if not api_key or not mail_from:
-        _last_email_error = "RESEND_API_KEY or MAIL_FROM is not configured"
-        app.logger.error("RESEND_API_KEY or MAIL_FROM is not configured")
+    gmail_user = (os.environ.get('GMAIL_USER') or os.environ.get('GMAIL_EMAIL') or os.environ.get('GMAIL_ADDRESS') or GMAIL_USER or '').strip().strip('"\'')
+    gmail_password = (os.environ.get('GMAIL_APP_PASSWORD') or os.environ.get('GMAIL_PASSWORD') or GMAIL_APP_PASSWORD or '').strip().strip('"\'')
+    if gmail_password:
+        gmail_password = gmail_password.replace(' ', '')
+
+    if not gmail_user or not gmail_password:
+        _last_email_error = "GMAIL_USER or GMAIL_APP_PASSWORD is not configured"
+        app.logger.error("GMAIL_USER or GMAIL_APP_PASSWORD is not configured")
         return False
 
-    # Check for unverified public webmail domains in MAIL_FROM
-    mail_from_addr = mail_from.split('<')[-1].replace('>', '').strip().lower()
-    if any(mail_from_addr.endswith(f"@{domain}") for domain in ('gmail.com', 'yahoo.com', 'hotmail.com', 'outlook.com')):
-        app.logger.warning(
-            "MAIL_FROM '%s' uses a public webmail domain. Resend requires sending from onboarding@resend.dev "
-            "or a custom domain verified in your Resend dashboard (https://resend.com/domains).",
-            mail_from
-        )
-
     try:
-        resend.api_key = api_key
-
         text_body = (
             "Hello,\n\n"
             "You requested to create a SecureVault account.\n\n"
@@ -919,17 +938,26 @@ def _send_verification_email(to_email: str, code: str) -> bool:
   <p style="margin: 0;">SecureVault AI Support</p>
 </body>
 </html>"""
-        res = resend.Emails.send({
-            "from": mail_from,
-            "to": [to_email.strip().lower()],
-            "subject": "Your SecureVault verification code",
-            "text": text_body,
-            "html": html_body,
-        })
-        app.logger.info("Resend verification email sent to %s (id: %s)", to_email, getattr(res, 'id', 'ok') if not isinstance(res, dict) else res.get('id', 'ok'))
+
+        msg = MIMEMultipart("alternative")
+        msg["Subject"] = "Your SecureVault verification code"
+        msg["From"] = formataddr(("SecureVault AI", gmail_user))
+        msg["To"] = to_email.strip().lower()
+
+        part1 = MIMEText(text_body, "plain", "utf-8")
+        part2 = MIMEText(html_body, "html", "utf-8")
+        msg.attach(part1)
+        msg.attach(part2)
+
+        context = ssl.create_default_context()
+        with smtplib.SMTP_SSL("smtp.gmail.com", 465, context=context, timeout=15) as server:
+            server.login(gmail_user, gmail_password)
+            server.sendmail(gmail_user, [to_email.strip().lower()], msg.as_string())
+
+        app.logger.info("Gmail SMTP verification email sent to %s", to_email)
         return True
     except Exception as exc:
-        _last_email_error = _safe_log_resend_error(exc, api_key=api_key)
+        _last_email_error = _safe_log_smtp_error(exc, password=gmail_password)
         return False
 
 # ── Forgot Password / Password Reset ──────────────────────────────────────────

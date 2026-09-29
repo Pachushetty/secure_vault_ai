@@ -5,7 +5,7 @@ import unittest
 from unittest.mock import patch, MagicMock
 import os
 
-from app import app, _send_verification_email, _send_reset_email
+from app import app, _send_reset_email
 from db import get_db, init_db
 
 class TestResendEmailDelivery(unittest.TestCase):
@@ -14,13 +14,12 @@ class TestResendEmailDelivery(unittest.TestCase):
         app.config['WTF_CSRF_ENABLED'] = False
         self.client = app.test_client()
 
-    def test_01_verification_email_missing_config(self):
-        """When RESEND_API_KEY or MAIL_FROM is missing, should return False without crashing."""
-        with patch.dict(os.environ, {'RESEND_API_KEY': '', 'MAIL_FROM': ''}, clear=False):
+    def test_01_reset_email_missing_api_key(self):
+        """When RESEND_API_KEY is missing, reset email returns False."""
+        with patch.dict(os.environ, {'RESEND_API_KEY': '', 'MAIL_FROM': 'support@example.com'}, clear=False):
             with patch('app.RESEND_API_KEY', ''):
-                with patch('app.MAIL_FROM', ''):
-                    result = _send_verification_email('user@example.com', '123456')
-                    self.assertFalse(result)
+                result = _send_reset_email('user@example.com', '123456')
+                self.assertFalse(result)
 
     def test_02_reset_email_missing_config(self):
         """When RESEND_API_KEY or MAIL_FROM is missing, reset email returns False."""
@@ -29,22 +28,6 @@ class TestResendEmailDelivery(unittest.TestCase):
                 with patch('app.MAIL_FROM', ''):
                     result = _send_reset_email('user@example.com', '123456')
                     self.assertFalse(result)
-
-    @patch('resend.Emails.send')
-    def test_03_verification_email_success(self, mock_send):
-        """When Resend succeeds, returns True and passes correct parameters."""
-        mock_send.return_value = {'id': 'msg_test123'}
-        with patch.dict(os.environ, {'RESEND_API_KEY': 're_testkey123', 'MAIL_FROM': 'onboarding@resend.dev'}):
-            result = _send_verification_email('testuser@example.com', '654321')
-            self.assertTrue(result)
-            mock_send.assert_called_once()
-            call_args = mock_send.call_args[0][0]
-            self.assertEqual(call_args['from'], 'onboarding@resend.dev')
-            self.assertEqual(call_args['to'], ['testuser@example.com'])
-            self.assertEqual(call_args['subject'], 'Your SecureVault verification code')
-            self.assertIn('654321', call_args['text'])
-            self.assertIn('654321', call_args['html'])
-            self.assertIn('Your verification code is: 654321', call_args['text'])
 
     @patch('resend.Emails.send')
     def test_04_reset_email_success(self, mock_send):
@@ -60,14 +43,6 @@ class TestResendEmailDelivery(unittest.TestCase):
             self.assertIn('Password Reset Code', call_args['subject'])
             self.assertIn('789012', call_args['text'])
             self.assertIn('789012', call_args['html'])
-
-    @patch('resend.Emails.send')
-    def test_05_verification_email_failure_exception(self, mock_send):
-        """When Resend raises an exception, returns False and does not re-raise."""
-        mock_send.side_effect = Exception("API connection timeout")
-        with patch.dict(os.environ, {'RESEND_API_KEY': 're_testkey123', 'MAIL_FROM': 'onboarding@resend.dev'}):
-            result = _send_verification_email('testuser@example.com', '123456')
-            self.assertFalse(result)
 
     @patch('resend.Emails.send')
     def test_06_reset_email_failure_exception(self, mock_send):
@@ -148,7 +123,7 @@ class TestResendEmailDelivery(unittest.TestCase):
         mock_send.return_value = {'id': 'msg_stripped'}
         with patch.dict(os.environ, {'RESEND_API_KEY': ' "re_spacedkey123" \n', 'MAIL_FROM': " 'onboarding@resend.dev' "}):
             import resend
-            result = _send_verification_email('testuser@example.com', '123456')
+            result = _send_reset_email('testuser@example.com', '123456')
             self.assertTrue(result)
             self.assertEqual(resend.api_key, 're_spacedkey123')
             self.assertEqual(mock_send.call_args[0][0]['from'], 'onboarding@resend.dev')
@@ -175,7 +150,7 @@ class TestResendEmailDelivery(unittest.TestCase):
     def test_11_registration_flash_surfaces_clear_error(self, mock_email):
         """Registration failure flash shows clear reason."""
         import app as app_mod
-        app_mod._last_email_error = "The from field must be an email address from a verified domain or onboarding@resend.dev."
+        app_mod._last_email_error = "Gmail SMTP connection failed: Connection refused"
         res = self.client.post('/register', data={
             'email': 'resend_reason_test@example.com',
             'name': 'Reason Test',
@@ -184,19 +159,7 @@ class TestResendEmailDelivery(unittest.TestCase):
             'agree_terms': 'on'
         }, follow_redirects=True)
         self.assertEqual(res.status_code, 200)
-        self.assertIn(b'verified domain', res.data)
-
-    @patch('resend.Emails.send')
-    def test_12_verification_email_uses_securevault_sender_address(self, mock_send):
-        """Verification emails use SecureVault AI <support@securevault.de5.net> by default."""
-        mock_send.return_value = {'id': 'msg_sender_verify'}
-        with patch.dict(os.environ, {'RESEND_API_KEY': 're_testkey123', 'MAIL_FROM': 'SecureVault AI <support@securevault.de5.net>'}):
-            result = _send_verification_email('newuser@example.com', '456789')
-            self.assertTrue(result)
-            mock_send.assert_called_once()
-            call_args = mock_send.call_args[0][0]
-            self.assertEqual(call_args['from'], 'SecureVault AI <support@securevault.de5.net>')
-            self.assertEqual(call_args['to'], ['newuser@example.com'])
+        self.assertIn(b'Connection refused', res.data)
 
     @patch('resend.Emails.send')
     def test_13_reset_email_uses_securevault_sender_address(self, mock_send):

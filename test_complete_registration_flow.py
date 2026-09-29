@@ -3,7 +3,7 @@ Verification script for complete registration flow:
 Register -> verification email sent -> receive 6-digit code -> enter code -> account verified -> login.
 """
 import unittest
-from unittest.mock import patch
+from unittest.mock import patch, MagicMock
 import bcrypt
 
 from app import app
@@ -34,40 +34,49 @@ class TestCompleteRegistrationFlow(unittest.TestCase):
             cur.execute("DELETE FROM users WHERE email = %s", (self.test_email,))
             db.commit()
 
-    def test_01_resend_email_without_api_key_reports_exact_error(self):
-        """When RESEND_API_KEY is not configured locally, exact error is captured."""
-        from app import _send_verification_email, _last_email_error
-        res = _send_verification_email(self.test_email, "123456")
-        self.assertFalse(res)
-        import app as app_mod
-        self.assertEqual(app_mod._last_email_error, "RESEND_API_KEY or MAIL_FROM is not configured")
+    def test_01_gmail_smtp_without_credentials_reports_exact_error(self):
+        """When GMAIL_USER or GMAIL_APP_PASSWORD is not configured locally, exact error is captured."""
+        from app import _send_verification_email
+        import os
+        with patch.dict(os.environ, {'GMAIL_USER': '', 'GMAIL_APP_PASSWORD': ''}, clear=False):
+            with patch('app.GMAIL_USER', ''):
+                with patch('app.GMAIL_APP_PASSWORD', ''):
+                    res = _send_verification_email(self.test_email, "123456")
+                    self.assertFalse(res)
+                    import app as app_mod
+                    self.assertEqual(app_mod._last_email_error, "GMAIL_USER or GMAIL_APP_PASSWORD is not configured")
 
-    def test_02_registration_post_fails_with_exact_error_when_no_api_key(self):
-        """Registration attempt without RESEND_API_KEY redirects with the exact configuration error."""
-        res = self.client.post('/register', data={
-            'email': self.test_email,
-            'name': self.test_name,
-            'password': self.test_password,
-            'confirm_password': self.test_password,
-            'agree_terms': 'on'
-        }, follow_redirects=True)
-        self.assertEqual(res.status_code, 200)
-        self.assertIn(b'Could not send verification email: RESEND_API_KEY or MAIL_FROM is not configured', res.data)
+    def test_02_registration_post_fails_with_exact_error_when_no_credentials(self):
+        """Registration attempt without Gmail SMTP credentials redirects with the exact configuration error."""
+        import os
+        with patch.dict(os.environ, {'GMAIL_USER': '', 'GMAIL_APP_PASSWORD': ''}, clear=False):
+            with patch('app.GMAIL_USER', ''):
+                with patch('app.GMAIL_APP_PASSWORD', ''):
+                    res = self.client.post('/register', data={
+                        'email': self.test_email,
+                        'name': self.test_name,
+                        'password': self.test_password,
+                        'confirm_password': self.test_password,
+                        'agree_terms': 'on'
+                    }, follow_redirects=True)
+                    self.assertEqual(res.status_code, 200)
+                    self.assertIn(b'Could not send verification email: GMAIL_USER or GMAIL_APP_PASSWORD is not configured', res.data)
 
-    @patch('resend.Emails.send')
-    def test_03_full_registration_verification_login_flow(self, mock_send):
+    @patch('smtplib.SMTP_SSL')
+    def test_03_full_registration_verification_login_flow(self, mock_smtp_ssl):
         """
         Tests the complete 6-step flow:
-        1. Register -> verification email dispatched using 'SecureVault AI <noreply@securevault.de5.net>'
-        2. Verification email sent successfully via Resend API
+        1. Register -> verification email dispatched via Gmail SMTP (smtp.gmail.com:465 SSL)
+        2. Verification email sent successfully via SMTP_SSL
         3. Receive 6-digit code (inspected from dispatched email call and hashed code in DB)
         4. Enter code at /verify-email
         5. Account verified in database
         6. Login -> Authenticated session active -> Dashboard access
         """
-        mock_send.return_value = {'id': 'msg_live_flow_test'}
+        mock_server = MagicMock()
+        mock_smtp_ssl.return_value.__enter__.return_value = mock_server
 
-        with patch.dict('os.environ', {'RESEND_API_KEY': 're_mock_test_key'}):
+        with patch.dict('os.environ', {'GMAIL_USER': 'testvault@gmail.com', 'GMAIL_APP_PASSWORD': 'abcd efgh ijkl mnop'}):
             # Step 1: Register
             res_reg = self.client.post('/register', data={
                 'email': self.test_email,
@@ -81,16 +90,29 @@ class TestCompleteRegistrationFlow(unittest.TestCase):
             self.assertEqual(res_reg.status_code, 302)
             self.assertIn('/verify-email', res_reg.headers['Location'])
 
-            # Step 2: Verification email sent via Resend with exact sender address
-            mock_send.assert_called_once()
-            call_kwargs = mock_send.call_args[0][0]
-            self.assertEqual(call_kwargs['from'], 'SecureVault AI <support@securevault.de5.net>')
-            self.assertEqual(call_kwargs['to'], [self.test_email])
-            self.assertEqual(call_kwargs['subject'], 'Your SecureVault verification code')
+            # Step 2: Verification email sent via Gmail SMTP on port 465 SSL
+            mock_smtp_ssl.assert_called_once()
+            args, kwargs = mock_smtp_ssl.call_args
+            self.assertEqual(args[0], 'smtp.gmail.com')
+            self.assertEqual(args[1], 465)
+            self.assertIn('context', kwargs)
+            mock_server.login.assert_called_once_with('testvault@gmail.com', 'abcdefghijklmnop')
+            mock_server.sendmail.assert_called_once()
+            send_args = mock_server.sendmail.call_args[0]
+            self.assertEqual(send_args[0], 'testvault@gmail.com')
+            self.assertEqual(send_args[1], [self.test_email])
+            raw_msg = send_args[2]
 
             # Step 3: Extract the 6-digit code dispatched to recipient
+            import email
+            msg_obj = email.message_from_string(raw_msg)
+            body_text = ""
+            for part in msg_obj.walk():
+                if part.get_content_type() == "text/plain":
+                    body_text = part.get_payload(decode=True).decode("utf-8")
+
             import re
-            match = re.search(r'Your verification code is:\s*(\d{6})', call_kwargs['text'])
+            match = re.search(r'Your verification code is:\s*(\d{6})', body_text)
             self.assertIsNotNone(match, "Dispatched email must contain the 6-digit code")
             six_digit_code = match.group(1)
 
