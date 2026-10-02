@@ -87,17 +87,33 @@ def index_document(doc_id, vault_id, owner_email):
 
         ciphertext = blob_get(blob_path)
         ext = f".{doc['file_type']}" if doc['file_type'] else ''
+        file_ext = (doc['file_type'] or '').lower().lstrip('.')
+        is_image = file_ext in ('jpg', 'jpeg', 'png', 'bmp', 'webp', 'tiff', 'jfif')
+
+        if is_image:
+            logger.info("[INDEXER] doc_id=%s (%s): image → OCR starting", doc_id, doc['filename'])
+        else:
+            logger.info("[INDEXER] doc_id=%s (%s): document text extraction starting (type=%s)", doc_id, doc['filename'], doc['file_type'])
+
         with decrypted_temp_copy_from_bytes(ciphertext, suffix=ext) as tmp_path:
             text = extract_text_from_file(tmp_path, doc['file_type'])
+
+        char_count = len(text.strip())
+        if is_image:
+            logger.info("[INDEXER] doc_id=%s (%s): OCR → extracted %d characters", doc_id, doc['filename'], char_count)
+        else:
+            logger.info("[INDEXER] doc_id=%s (%s): extracted %d characters", doc_id, doc['filename'], char_count)
+
         if not text.strip():
-            # Create an empty index status to denote it's finished but has no text content
+            err_msg = 'OCR failed to extract readable text' if is_image else 'No extractable text'
             cur.execute("""
                 UPDATE document_indexing_status
-                SET status = 'completed', error_message = 'No extractable text', updated_at = now()
+                SET status = 'failed', error_message = %s, updated_at = now()
                 WHERE doc_id = %s
-            """, (doc_id,))
+            """, (err_msg, doc_id))
             conn.commit()
-            return True
+            logger.warning("[INDEXER] doc_id=%s (%s): %s — marked status as failed", doc_id, doc['filename'], err_msg)
+            return False
 
         # 4. Chunk text — parent/child: `chunks[i]['child_text']` is what
         # gets embedded and matched against a query; `parent_text` is the
@@ -105,6 +121,7 @@ def index_document(doc_id, vault_id, owner_email):
         # retrieval can hand the LLM richer context than the short match
         # alone (see services/document_processor.py chunk_text_parent_child).
         chunks = chunk_text_parent_child(text)
+        logger.info("[INDEXER] doc_id=%s (%s): %d chunks created", doc_id, doc['filename'], len(chunks))
         
         # Clear existing chunks if any to avoid duplication (e.g. during replacement or re-index)
         cur.execute("DELETE FROM document_chunks WHERE doc_id = %s", (doc_id,))
@@ -142,6 +159,13 @@ def index_document(doc_id, vault_id, owner_email):
             WHERE doc_id = %s
         """, (doc_id,))
         conn.commit()
+
+        if is_image:
+            logger.info("[INDEXER] doc_id=%s (%s): image → OCR → extracted %d chars → %d chunks created → completed",
+                        doc_id, doc['filename'], char_count, len(chunks))
+        else:
+            logger.info("[INDEXER] doc_id=%s (%s): extracted %d chars → %d chunks created → completed",
+                        doc_id, doc['filename'], char_count, len(chunks))
         return True
 
     except Exception as e:

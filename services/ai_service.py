@@ -86,6 +86,7 @@ def expand_query(question):
         r'\bsem\b': 'semester',
         r'\bpu\b': 'PU pre-university',
         r'\bpuc\b': 'PU pre-university',
+        r'\bbca\b': 'BCA Bachelor of Computer Applications',
         r'\bos\b': 'operating system OS',
     }
     for pattern, replacement in replacements.items():
@@ -317,7 +318,11 @@ def _call_llm(context, question):
     fallback if every remote option is unavailable or fails."""
     provider_enabled = os.environ.get('AI_PROVIDER_ENABLED', 'true').lower() != 'false'
     api_key = os.environ.get('GROQ_API_KEY') or os.environ.get('AI_API_KEY')
-    model = os.environ.get('AI_MODEL', 'groq/compound')
+    configured_model = os.environ.get('AI_MODEL', 'qwen/qwen3.8-27b').strip()
+    if configured_model in ('groq/compound', 'groq/compound-mini', ''):
+        primary_model = 'qwen/qwen3.8-27b'
+    else:
+        primary_model = configured_model
 
     if not provider_enabled:
         # Operator has explicitly opted out of sending document content to
@@ -346,35 +351,37 @@ def _call_llm(context, question):
     logger = logging.getLogger(__name__)
 
     if api_key:
-        try:
-            from groq import Groq
-            client = Groq(api_key=api_key, timeout=_LLM_TIMEOUT_SECONDS)
+        groq_models = [
+            primary_model,
+            os.environ.get('AI_FALLBACK_MODEL', '').strip(),
+            'qwen/qwen3.8-27b',
+            'openai/gpt-oss-120b',
+        ]
+        groq_models = [m for m in groq_models if m and m not in ('groq/compound', 'groq/compound-mini')]
+        seen = set()
+        deduped_models = []
+        for m in groq_models:
+            if m not in seen:
+                seen.add(m)
+                deduped_models.append(m)
 
-            chat_completion = client.chat.completions.create(
-                messages=messages,
-                model=model,
-                temperature=0.0,
-                max_tokens=500
-            )
-
-            return chat_completion.choices[0].message.content
-        except Exception as e:
-            logger.warning("Groq API primary model request failed: %s", type(e).__name__)
-            # Try fallback model on the same provider (e.g. rate limit / model
-            # capacity issue on the primary model specifically).
-            fallback_model = os.environ.get('AI_FALLBACK_MODEL', 'groq/compound-mini')
+        for m in deduped_models:
             try:
                 from groq import Groq
                 client = Groq(api_key=api_key, timeout=_LLM_TIMEOUT_SECONDS)
+
                 chat_completion = client.chat.completions.create(
                     messages=messages,
-                    model=fallback_model,
-                    temperature=0.0,
-                    max_tokens=500
+                    model=m,
+                    temperature=0.1,
+                    max_tokens=400
                 )
-                return chat_completion.choices[0].message.content
-            except Exception as e_inner:
-                logger.warning("Groq API fallback model (%s) failed: %s", fallback_model, type(e_inner).__name__)
+
+                ans = chat_completion.choices[0].message.content
+                if ans and ans.strip():
+                    return ans.strip()
+            except Exception as e:
+                logger.warning("Groq API model (%s) failed: %s", m, type(e).__name__)
 
     # Alternative provider: any OpenAI-compatible REST endpoint (OpenRouter,
     # Together AI, Fireworks, a local Ollama server, etc.) configured via

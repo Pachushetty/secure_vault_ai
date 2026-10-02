@@ -96,16 +96,118 @@ def _get_easyocr_reader(langs=('en', 'kn', 'hi')):
     return _easyocr_readers[key]
 
 
+def _clean_vision_ocr_output(text: str) -> str:
+    """Clean conversational filler or markdown code fences from vision OCR response."""
+    if not text:
+        return ""
+    lines = text.splitlines()
+    cleaned = []
+    for line in lines:
+        stripped = line.strip()
+        if stripped.startswith("```"):
+            continue
+        if re.match(r'^(here\s+(is|are)|sure|certainly|below\s+is|this\s+image\s+contains)', stripped, re.IGNORECASE) and len(stripped) < 140:
+            continue
+        cleaned.append(line)
+    return "\n".join(cleaned).strip()
+
+
+def _ocr_with_groq_vision(pil_img) -> str:
+    """Extract text from an image using Groq's multimodal vision model (qwen/qwen3.8-27b).
+    Works reliably in serverless environments like Vercel where system OCR
+    binaries (Tesseract, ONNX, PyTorch) are not available."""
+    api_key = os.environ.get('GROQ_API_KEY') or os.environ.get('AI_API_KEY')
+    if not api_key:
+        logger.warning("[OCR] GROQ_API_KEY is not set, vision OCR unavailable.")
+        return ""
+
+    import io
+    import base64
+    from PIL import Image, ImageOps
+
+    try:
+        img_copy = pil_img.copy()
+        img_copy = ImageOps.exif_transpose(img_copy)
+        if img_copy.mode != 'RGB':
+            img_copy = img_copy.convert('RGB')
+
+        # Limit maximum dimension to 2048 to prevent huge payload overhead
+        max_dim = 2048
+        if max(img_copy.size) > max_dim:
+            img_copy.thumbnail((max_dim, max_dim), Image.Resampling.LANCZOS)
+
+        buf = io.BytesIO()
+        img_copy.save(buf, format='JPEG', quality=90)
+        jpeg_bytes = buf.getvalue()
+        b64_str = base64.b64encode(jpeg_bytes).decode('utf-8')
+
+        from groq import Groq
+        timeout_sec = float(os.environ.get('AI_REQUEST_TIMEOUT_SECONDS', '25'))
+        client = Groq(api_key=api_key, timeout=timeout_sec)
+
+        models_to_try = [
+            os.environ.get('GROQ_VISION_MODEL', '').strip(),
+            'qwen/qwen3.8-27b',
+        ]
+        models_to_try = [m for m in models_to_try if m]
+
+        prompt = (
+            "You are a document digitization assistant. Extract ALL text and data from this image.\n\n"
+            "CRITICAL RULES:\n"
+            "1. Extract every field, label, number, name, date, and value visible.\n"
+            "2. If marks or scores are written as WORDS (e.g. NINE THREE, EIGHT FIVE), "
+            "convert them to digits (93, 85) in your output. Always output numeric digits for any mark/score.\n"
+            "3. For mark sheets / grade cards: list each subject with its max marks and scored marks as digits.\n"
+            "4. Calculate and state the TOTAL marks (sum of all subject marks) explicitly as: 'Total Marks: <number>'.\n"
+            "5. Include candidate name, registration number, institution, year, percentage, grade, result.\n"
+            "6. For tables: transcribe row by row with subject | max | scored format.\n"
+            "7. Do NOT summarize — output the full extracted data verbatim.\n"
+            "8. Do not add conversational commentary or markdown code fences."
+        )
+
+        for model in models_to_try:
+            try:
+                resp = client.chat.completions.create(
+                    model=model,
+                    messages=[{
+                        'role': 'user',
+                        'content': [
+                            {'type': 'text', 'text': prompt},
+                            {'type': 'image_url', 'image_url': {'url': f'data:image/jpeg;base64,{b64_str}'}}
+                        ]
+                    }],
+                    max_tokens=1200,
+                    temperature=0.1
+                )
+                raw_text = resp.choices[0].message.content or ""
+                cleaned = _clean_vision_ocr_output(raw_text)
+                if cleaned and len(cleaned.strip()) >= 20:
+                    logger.info("[OCR] Groq vision model (%s) extracted %d characters from image", model, len(cleaned.strip()))
+                    return cleaned.strip()
+            except Exception as e:
+                logger.warning("[OCR] Groq vision model (%s) failed: %s", model, type(e).__name__)
+
+    except Exception as exc:
+        logger.error("[OCR] Groq vision OCR failed: %s", exc)
+
+    return ""
+
+
 def _ocr_image(img_or_bytes):
     """
     Perform robust, multilingual OCR on an image (PIL Image, numpy array, or image bytes).
 
-    Strategy (in order):
-      1. EasyOCR with Kannada + Hindi + English — best for Indic-script documents.
-      2. RapidOCR — fast, Latin-script ONNX engine, good fallback.
-      3. pytesseract — last-resort system OCR.
+    Strategy (in order of preference):
+      1. Groq Vision OCR (qwen/qwen3.8-27b) — primary method when GROQ_API_KEY is set.
+         Best for official/government documents, multilingual, extracts structured data,
+         converts word-form numbers to digits, and calculates totals automatically.
+      2. EasyOCR with Kannada + Hindi + English — local fallback for Indic-script docs.
+      3. RapidOCR — fast, Latin-script ONNX engine, good fallback.
+      4. pytesseract — last-resort local OCR.
 
-    Hex watermark artifacts (common on govt certificate scans) are stripped.
+    Groq Vision is preferred even in local development because it produces significantly
+    better results on government/official documents (PU certificates, mark sheets, etc.)
+    where text may be in Kannada or marks written as words ("NINE THREE" → 93).
     """
     import io, numpy as np
     from PIL import Image
@@ -119,21 +221,36 @@ def _ocr_image(img_or_bytes):
         # Already a numpy array or similar
         pil_img = Image.fromarray(np.array(img_or_bytes)).convert('RGB')
 
+    # 1. Groq Vision OCR — primary method when API key is available.
+    #    This is always tried first (both Vercel and local) because it produces
+    #    much better results on official documents than local OCR engines.
+    groq_api_key = os.environ.get('GROQ_API_KEY') or os.environ.get('AI_API_KEY')
+    if groq_api_key or os.environ.get('VERCEL'):
+        groq_text = _ocr_with_groq_vision(pil_img)
+        if groq_text and len(groq_text.strip()) >= 40:
+            return groq_text.strip()
+
+    # If running in Vercel environment, local OCR binaries are absent — stop here.
+    if os.environ.get('VERCEL'):
+        return ""
+
     np_img = np.array(pil_img)
 
-    # 1. EasyOCR — multilingual (Kannada + Hindi + English)
+    # 2. EasyOCR — multilingual (Kannada + Hindi + English)
     try:
         reader = _get_easyocr_reader(('en', 'kn', 'hi'))
         if reader is not None:
             results = reader.readtext(np_img, detail=0, paragraph=False)
             lines = _filter_ocr_lines(results)
             if lines:
-                logger.debug("EasyOCR extracted %d lines", len(lines))
-                return '\n'.join(lines)
+                text = '\n'.join(lines).strip()
+                if len(text) >= 40:
+                    logger.debug("EasyOCR extracted %d lines", len(lines))
+                    return text
     except Exception as e:
         logger.warning("EasyOCR inference error: %s", type(e).__name__)
 
-    # 2. RapidOCR — self-contained ONNX engine, good for Latin/CJK
+    # 3. RapidOCR — self-contained ONNX engine, good for Latin/CJK
     try:
         from rapidocr_onnxruntime import RapidOCR
         engine = RapidOCR()
@@ -142,21 +259,26 @@ def _ocr_image(img_or_bytes):
             raw = [item[1].strip() for item in result if len(item) > 1 and item[1]]
             lines = _filter_ocr_lines(raw)
             if lines:
-                return '\n'.join(lines)
+                text = '\n'.join(lines).strip()
+                if len(text) >= 40:
+                    return text
     except Exception as e:
         logger.warning("RapidOCR error: %s", type(e).__name__)
 
-    # 3. pytesseract — last resort
+    # 4. pytesseract — last resort
     try:
         import pytesseract
         text = pytesseract.image_to_string(pil_img)
         if text and text.strip():
             lines = _filter_ocr_lines(text.splitlines())
-            return '\n'.join(lines) if lines else text.strip()
+            filtered = '\n'.join(lines).strip() if lines else text.strip()
+            if len(filtered) >= 40:
+                return filtered
     except Exception:
         pass
 
     return ""
+
 
 
 def _extract_from_pdf(file_path):
