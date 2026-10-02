@@ -1402,112 +1402,128 @@ def dashboard():
 @login_required
 def create_vault():
     if request.method == 'POST':
-        vault_name = request.form.get('vault_name', '').strip()
-        files      = request.files.getlist('documents')
+        app.logger.info("[CREATE] Starting POST /create request")
+        try:
+            vault_name = request.form.get('vault_name', '').strip()
+            files      = request.files.getlist('documents')
+            app.logger.info("[CREATE] Step 1: Form parsed (vault_name='%s', file_count=%d)", vault_name, len(files))
 
-        if not vault_name:
-            flash('Please give your folder a name.', 'error')
-            return render_template('create.html')
-        if not files or all(f.filename == '' for f in files):
-            flash('Please upload at least one document.', 'error')
-            return render_template('create.html')
+            if not vault_name:
+                flash('Please give your folder a name.', 'error')
+                return render_template('create.html')
+            if not files or all(f.filename == '' for f in files):
+                flash('Please upload at least one document.', 'error')
+                return render_template('create.html')
 
-        vault_id  = generate_vault_id()
+            vault_id  = generate_vault_id()
+            saved_docs, errors = [], []
+            base_url = request.host_url.rstrip('/')
+            
+            for index, f in enumerate(files):
+                if f.filename == '':
+                    continue
+                app.logger.info("[CREATE] Step 2: Validating file index=%d ('%s')", index, f.filename)
+                if not allowed_file(f.filename):
+                    errors.append(f"{f.filename}: unsupported format.")
+                    continue
+                claimed_ext = f.filename.rsplit('.', 1)[1].lower()
+                if not content_matches_extension(f, claimed_ext):
+                    errors.append(f"{f.filename}: file content doesn't match its .{claimed_ext} extension.")
+                    continue
+                f.seek(0, 2); size = f.tell(); f.seek(0)
+                if size > MAX_FILE_SIZE:
+                    errors.append(f"{f.filename}: exceeds {MAX_FILE_MB} MB.")
+                    continue
+                fname  = secure_filename(f.filename)
+                unique = f"{uuid.uuid4().hex}_{fname}"
+                
+                app.logger.info("[CREATE] Step 3: Encrypting file '%s' (%d bytes)...", fname, size)
+                size, ciphertext = encrypt_stream_to_bytes(f)
+                
+                app.logger.info("[CREATE] Step 4: Storing ciphertext for '%s' (%d bytes) in Blob (uploads/%s/%s)...", fname, len(ciphertext), vault_id, unique)
+                blob_put(f"uploads/{vault_id}/{unique}", ciphertext)
+                
+                doc_id = uuid.uuid4().hex
+                
+                # Parse access settings
+                access_type = request.form.get(f'access_type_{index}', 'public')
+                access_code = hash_access_code(request.form.get(f'access_code_{index}', '').strip() or None)
+                
+                view_limit = request.form.get(f'view_limit_{index}', '').strip()
+                view_limit = int(view_limit) if (view_limit and view_limit.isdigit()) else None
+                
+                expires_hours = request.form.get(f'expires_hours_{index}', '').strip()
+                expires_at = datetime.now() + timedelta(hours=int(expires_hours)) if (expires_hours and expires_hours.isdigit()) else None
+                
+                folder_name = request.form.get(f'folder_name_{index}', '').strip() or None
+                
+                app.logger.info("[CREATE] Step 5: Generating QR path for document '%s'", fname)
+                doc_qr_path = generate_doc_qr(fname, doc_id, base_url)
+                
+                saved_docs.append({
+                    "doc_id":      doc_id,
+                    "filename":    fname,
+                    "stored_name": unique,
+                    "file_type":   fname.rsplit('.', 1)[1].lower(),
+                    "file_size":   size,
+                    "access_type": access_type,
+                    "access_code": access_code,
+                    "view_limit":  view_limit,
+                    "expires_at":  expires_at,
+                    "qr_path":     doc_qr_path,
+                    "folder_name": folder_name
+                })
 
-        saved_docs, errors = [], []
-        base_url = request.host_url.rstrip('/')
-        
-        for index, f in enumerate(files):
-            if f.filename == '':
-                continue
-            if not allowed_file(f.filename):
-                errors.append(f"{f.filename}: unsupported format.")
-                continue
-            claimed_ext = f.filename.rsplit('.', 1)[1].lower()
-            if not content_matches_extension(f, claimed_ext):
-                errors.append(f"{f.filename}: file content doesn't match its .{claimed_ext} extension.")
-                continue
-            f.seek(0, 2); size = f.tell(); f.seek(0)
-            if size > MAX_FILE_SIZE:
-                errors.append(f"{f.filename}: exceeds {MAX_FILE_MB} MB.")
-                continue
-            fname  = secure_filename(f.filename)
-            unique = f"{uuid.uuid4().hex}_{fname}"
-            # Files are encrypted at rest (services/crypto_utils.py) before
-            # ever touching disk â€” size is measured from the plaintext the
-            # user actually uploaded, not the (slightly larger) ciphertext.
-            size, ciphertext = encrypt_stream_to_bytes(f)
-            blob_put(f"uploads/{vault_id}/{unique}", ciphertext)
-            
-            doc_id = uuid.uuid4().hex
-            
-            # Parse access settings
-            access_type = request.form.get(f'access_type_{index}', 'public')
-            access_code = hash_access_code(request.form.get(f'access_code_{index}', '').strip() or None)
-            
-            view_limit = request.form.get(f'view_limit_{index}', '').strip()
-            view_limit = int(view_limit) if (view_limit and view_limit.isdigit()) else None
-            
-            expires_hours = request.form.get(f'expires_hours_{index}', '').strip()
-            expires_at = datetime.now() + timedelta(hours=int(expires_hours)) if (expires_hours and expires_hours.isdigit()) else None
-            
-            folder_name = request.form.get(f'folder_name_{index}', '').strip() or None
-            
-            doc_qr_path = generate_doc_qr(fname, doc_id, base_url)
-            
-            saved_docs.append({
-                "doc_id":      doc_id,
-                "filename":    fname,
-                "stored_name": unique,
-                "file_type":   fname.rsplit('.', 1)[1].lower(),
-                "file_size":   size,
-                "access_type": access_type,
-                "access_code": access_code,
-                "view_limit":  view_limit,
-                "expires_at":  expires_at,
-                "qr_path":     doc_qr_path,
-                "folder_name": folder_name
-            })
+            if not saved_docs:
+                flash('No valid documents uploaded. ' + ' '.join(errors), 'error')
+                return render_template('create.html')
 
-        if not saved_docs:
-            flash('No valid documents uploaded. ' + ' '.join(errors), 'error')
-            return render_template('create.html')
+            email    = session['user_email']
+            qr_path  = generate_vault_qr(vault_name, vault_id, base_url)
 
-        email    = session['user_email']
-        qr_path  = generate_vault_qr(vault_name, vault_id, base_url)
-
-        db  = get_db()
-        cur = db.cursor()
-        cur.execute(
-            "INSERT INTO vaults (vault_id, vault_name, owner_email, qr_path) "
-            "VALUES (%s, %s, %s, %s)",
-            (vault_id, vault_name, email, qr_path)
-        )
-        for doc in saved_docs:
+            app.logger.info("[CREATE] Step 6: Inserting vault '%s' and %d documents into PostgreSQL...", vault_id, len(saved_docs))
+            db  = get_db()
+            cur = db.cursor()
             cur.execute(
-                "INSERT INTO documents (doc_id, vault_id, filename, stored_name, "
-                "file_type, file_size, access_type, access_code, expires_at, view_limit, qr_path, folder_name) "
-                "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)",
-                (doc["doc_id"], vault_id, doc["filename"], doc["stored_name"],
-                 doc["file_type"], doc["file_size"], doc["access_type"], doc["access_code"],
-                 doc["expires_at"], doc["view_limit"], doc["qr_path"], doc["folder_name"])
+                "INSERT INTO vaults (vault_id, vault_name, owner_email, qr_path) "
+                "VALUES (%s, %s, %s, %s)",
+                (vault_id, vault_name, email, qr_path)
             )
-            cur.execute(
-                "INSERT INTO document_indexing_status (doc_id, status) VALUES (%s, 'pending')",
-                (doc["doc_id"],)
-            )
+            for doc in saved_docs:
+                cur.execute(
+                    "INSERT INTO documents (doc_id, vault_id, filename, stored_name, "
+                    "file_type, file_size, access_type, access_code, expires_at, view_limit, qr_path, folder_name) "
+                    "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)",
+                    (doc["doc_id"], vault_id, doc["filename"], doc["stored_name"],
+                     doc["file_type"], doc["file_size"], doc["access_type"], doc["access_code"],
+                     doc["expires_at"], doc["view_limit"], doc["qr_path"], doc["folder_name"])
+                )
+                cur.execute(
+                    "INSERT INTO document_indexing_status (doc_id, status) VALUES (%s, 'pending')",
+                    (doc["doc_id"],)
+                )
 
-        db.commit()
-        for doc in saved_docs:
-            index_document_async(doc["doc_id"], vault_id, email)
+            db.commit()
+            app.logger.info("[CREATE] Step 7: Database transaction committed.")
 
-        log_audit_event('upload', actor_email=email,
-                         details=f"vault_created vault_id={vault_id} doc_count={len(saved_docs)}")
+            for doc in saved_docs:
+                try:
+                    index_document_async(doc["doc_id"], vault_id, email)
+                except Exception as index_err:
+                    app.logger.warning("[CREATE] Could not start async indexer for doc %s: %s", doc["doc_id"], index_err)
 
-        if errors:
-            flash('Some files skipped: ' + ' '.join(errors), 'warning')
+            log_audit_event('upload', actor_email=email,
+                             details=f"vault_created vault_id={vault_id} doc_count={len(saved_docs)}")
 
-        return redirect(url_for('vault_view', vault_id=vault_id))
+            if errors:
+                flash('Some files skipped: ' + ' '.join(errors), 'warning')
+
+            app.logger.info("[CREATE] Step 8: Vault creation completed, redirecting to /vault/%s/view", vault_id)
+            return redirect(url_for('vault_view', vault_id=vault_id))
+        except Exception as exc:
+            import traceback
+            app.logger.error("[CREATE] Exception during vault creation: %s\n%s", exc, traceback.format_exc())
+            raise
 
     return render_template('create.html')
 

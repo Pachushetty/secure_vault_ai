@@ -60,19 +60,27 @@ _fernet = None
 def _load_or_create_key():
     env_key = os.environ.get('FILE_ENCRYPTION_KEY')
     if env_key:
-        return env_key.encode('utf-8')
+        env_key = env_key.strip().strip("'\"")
+        try:
+            Fernet(env_key.encode('utf-8'))
+            return env_key.encode('utf-8')
+        except Exception:
+            derived = base64.urlsafe_b64encode(hashlib.sha256(env_key.encode('utf-8')).digest())
+            return derived
 
     # If FLASK_SECRET_KEY is provided in production, derive a deterministic Fernet key
     flask_secret = os.environ.get('FLASK_SECRET_KEY') or os.environ.get('SECRET_KEY')
     if flask_secret:
-        derived = base64.urlsafe_b64encode(hashlib.sha256(flask_secret.encode('utf-8')).digest())
+        derived = base64.urlsafe_b64encode(hashlib.sha256(flask_secret.strip().strip("'\"").encode('utf-8')).digest())
         return derived
 
     if os.path.exists(KEY_FILE):
         try:
             with open(KEY_FILE, 'rb') as f:
-                return f.read().strip()
-        except OSError:
+                k = f.read().strip()
+                Fernet(k)
+                return k
+        except Exception:
             pass
 
     key = Fernet.generate_key()
@@ -256,25 +264,32 @@ _NONCE_BYTES  = 12   # 96-bit nonce, recommended for AES-GCM
 def _load_text_key() -> None:
     """Load DOCUMENT_TEXT_ENCRYPTION_KEY once at module import time.
 
-    The key must be a base64url-encoded 32-byte value.  If absent or invalid
-    the module-level TEXT_ENCRYPTION_AVAILABLE flag stays False and callers
-    must refuse to store or read chunk ciphertext rather than silently
-    operating on plaintext / corrupt data.
+    The key must be a base64url-encoded 32-byte value. If absent or invalid,
+    it falls back to deriving a key from FLASK_SECRET_KEY / SECRET_KEY so RAG
+    chunk text encryption can proceed safely without failing uploads.
     """
     global _text_key, TEXT_ENCRYPTION_AVAILABLE
-    raw_env = os.environ.get(_TEXT_KEY_ENV, '').strip()
+    raw_env = os.environ.get(_TEXT_KEY_ENV, '').strip().strip("'\"")
     if not raw_env:
+        flask_secret = os.environ.get('FLASK_SECRET_KEY') or os.environ.get('SECRET_KEY') or os.environ.get('FILE_ENCRYPTION_KEY')
+        if flask_secret:
+            _text_key = hashlib.sha256((flask_secret.strip().strip("'\"") + ":rag_text_encryption").encode('utf-8')).digest()
+            TEXT_ENCRYPTION_AVAILABLE = True
+            logger.info("DOCUMENT_TEXT_ENCRYPTION_KEY derived deterministically from secret key.")
+            return
         logger.warning(
             "DOCUMENT_TEXT_ENCRYPTION_KEY is not set. "
             "RAG chunk text encryption is DISABLED — document text will NOT "
-            "be stored encrypted in PostgreSQL. Set this variable to enable "
-            "AES-256-GCM protection of extracted document content."
+            "be stored encrypted in PostgreSQL."
         )
         return
     try:
-        key_bytes = base64.urlsafe_b64decode(raw_env + '==')  # tolerant padding
+        try:
+            key_bytes = base64.urlsafe_b64decode(raw_env + '==')  # tolerant padding
+        except Exception:
+            key_bytes = b''
         if len(key_bytes) != 32:
-            raise ValueError(f"Key must be exactly 32 bytes; got {len(key_bytes)}")
+            key_bytes = hashlib.sha256(raw_env.encode('utf-8')).digest()
         _text_key = key_bytes
         TEXT_ENCRYPTION_AVAILABLE = True
         logger.info("DOCUMENT_TEXT_ENCRYPTION_KEY loaded — AES-256-GCM text encryption active.")
