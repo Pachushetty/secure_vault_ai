@@ -15,11 +15,12 @@ import psycopg2.extras
 from db import DATABASE_URL
 from services.document_processor import extract_text_from_file, chunk_text_parent_child
 from services.embedding_service import generate_embedding, serialize_vector
-from services.crypto_utils import decrypted_temp_copy, encrypt_text, TEXT_ENCRYPTION_AVAILABLE
+from services.crypto_utils import (
+    decrypted_temp_copy_from_bytes, encrypt_text, TEXT_ENCRYPTION_AVAILABLE
+)
+from services.blob_storage import blob_get, blob_exists
 
 logger = logging.getLogger(__name__)
-
-UPLOAD_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'private_storage', 'uploads')
 
 def get_direct_conn():
     """Get a fresh, standalone database connection for background threads."""
@@ -75,16 +76,18 @@ def index_document(doc_id, vault_id, owner_email):
         if not doc:
             raise ValueError(f"Document {doc_id} not found in database.")
 
-        # 3. Resolve path and extract text. Documents are encrypted at rest
-        # (see services/crypto_utils.py), so decrypt into a private temp
-        # file for the extraction libraries (which need a real path) and
-        # remove it as soon as extraction finishes.
-        file_path = os.path.join(UPLOAD_DIR, vault_id, doc['stored_name'])
-        if not os.path.exists(file_path):
-            raise FileNotFoundError(f"File not found on disk: {file_path}")
+        # 3. Fetch encrypted ciphertext from Vercel Blob and extract text.
+        # Documents are encrypted at rest (services/crypto_utils.py), so
+        # decrypt into a private temp file for the extraction libraries
+        # (which need a real path) and remove it as soon as extraction
+        # finishes.
+        blob_path = f"uploads/{vault_id}/{doc['stored_name']}"
+        if not blob_exists(blob_path):
+            raise FileNotFoundError(f"Blob not found: {blob_path}")
 
+        ciphertext = blob_get(blob_path)
         ext = f".{doc['file_type']}" if doc['file_type'] else ''
-        with decrypted_temp_copy(file_path, suffix=ext) as tmp_path:
+        with decrypted_temp_copy_from_bytes(ciphertext, suffix=ext) as tmp_path:
             text = extract_text_from_file(tmp_path, doc['file_type'])
         if not text.strip():
             # Create an empty index status to denote it's finished but has no text content

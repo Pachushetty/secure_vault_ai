@@ -168,6 +168,59 @@ class decrypted_temp_copy:
         return False
 
 
+# ── Blob-aware helpers (Vercel Blob Storage) ─────────────────────────────────
+#
+# These parallel the disk-based helpers above but work with bytes supplied
+# from blob_storage.blob_get() instead of reading from a file path.
+# The encryption algorithm is identical — Fernet via get_fernet().
+
+def encrypt_stream_to_bytes(file_storage) -> tuple:
+    """Read a werkzeug FileStorage stream, encrypt it, and return
+    (plaintext_size_int, ciphertext_bytes).  The caller uploads the
+    ciphertext to Blob storage."""
+    file_storage.seek(0)
+    raw = file_storage.read()
+    file_storage.seek(0)
+    return len(raw), encrypt_bytes(raw)
+
+
+def decrypt_ciphertext_to_bytes(ciphertext: bytes) -> bytes:
+    """Decrypt Fernet ciphertext bytes (from Blob) into plaintext bytes."""
+    return decrypt_bytes(ciphertext)
+
+
+class decrypted_temp_copy_from_bytes:
+    """Context manager: decrypts ciphertext *bytes* (from Blob) into a private
+    temp file and yields its path, for library code (PyMuPDF, python-docx,
+    PIL, ...) that needs a real filesystem path. The temp file is created
+    0600 in the system temp dir and always removed on exit."""
+
+    def __init__(self, ciphertext: bytes, suffix: str = ''):
+        self.ciphertext = ciphertext
+        self.suffix = suffix
+        self.tmp_path = None
+
+    def __enter__(self):
+        import tempfile
+        data = decrypt_bytes(self.ciphertext)
+        fd, self.tmp_path = tempfile.mkstemp(suffix=self.suffix)
+        try:
+            with os.fdopen(fd, 'wb') as f:
+                f.write(data)
+        except Exception:
+            os.close(fd)
+            raise
+        return self.tmp_path
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        if self.tmp_path and os.path.exists(self.tmp_path):
+            try:
+                os.remove(self.tmp_path)
+            except OSError:
+                pass
+        return False
+
+
 # ── AES-256-GCM text encryption for RAG document chunks ─────────────────────
 #
 # Separate from the Fernet file-encryption above. Uses its own key

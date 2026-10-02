@@ -2,7 +2,6 @@ import os
 import uuid
 import secrets
 import re
-import shutil
 import logging
 import smtplib
 import ssl
@@ -37,9 +36,10 @@ from db import get_db, close_db, init_db, to_iso, to_iso_all
 from services.indexer import index_document_async, index_all_user_documents
 from services.ai_service import ask_vault_ai
 from services.crypto_utils import (
-    encrypt_stream_to_path, decrypt_path_to_bytes, decrypted_temp_copy,
+    encrypt_stream_to_bytes, decrypt_ciphertext_to_bytes,
     encrypt_text, decrypt_text, TEXT_ENCRYPTION_AVAILABLE
 )
+from services.blob_storage import blob_put, blob_get, blob_delete, blob_exists
 import mimetypes
 import hashlib
 
@@ -78,10 +78,8 @@ limiter = Limiter(
 )
 
 BASE_DIR      = os.path.dirname(os.path.abspath(__file__))
-# NOTE: deliberately OUTSIDE static/ â€” files here must only ever be served
-# through the authenticated/authorized Flask routes below (send_file), never
-# via Flask's automatic static-file handler.
-UPLOAD_DIR    = os.path.join(BASE_DIR, 'private_storage', 'uploads')
+# Encrypted documents are stored in Vercel Blob (BLOB_READ_WRITE_TOKEN).
+# QR codes contain no document content and are served by Flask normally.
 QR_DIR        = os.path.join(BASE_DIR, 'static', 'qrcodes')
 SECRET_FILE   = os.path.join(BASE_DIR, 'instance', 'secret.key')
 
@@ -104,7 +102,6 @@ GMAIL_APP_PASSWORD = (os.environ.get('GMAIL_APP_PASSWORD') or os.environ.get('GM
 TERMS_VERSION      = '2026-08-17'
 LEGAL_UPDATED_DATE  = 'August 17, 2026'
 
-os.makedirs(UPLOAD_DIR, exist_ok=True)
 os.makedirs(QR_DIR,     exist_ok=True)
 os.makedirs(os.path.join(BASE_DIR, 'instance'), exist_ok=True)
 
@@ -222,13 +219,14 @@ def _wants_json():
     accept = request.headers.get('Accept', '')
     return 'application/json' in accept and 'text/html' not in accept
 
-def send_encrypted_file(disk_path, download_name, as_attachment):
-    """Decrypt a document from disk into memory and serve it â€” documents are
-    encrypted at rest (services/crypto_utils.py), so nothing ever hands a
-    raw ciphertext (or, before this feature, a raw plaintext path) straight
-    to send_file(). mimetype is guessed from the real filename so browsers
-    still render/download it correctly."""
-    data = decrypt_path_to_bytes(disk_path)
+def send_encrypted_blob(blob_path, download_name, as_attachment):
+    """Fetch a document from Vercel Blob, decrypt it in memory, and serve it.
+    Documents are encrypted at rest (services/crypto_utils.py), so nothing
+    ever hands raw ciphertext straight to send_file(). The mimetype is
+    guessed from the real filename so browsers still render/download it
+    correctly."""
+    ciphertext = blob_get(blob_path)
+    data = decrypt_ciphertext_to_bytes(ciphertext)
     mimetype = mimetypes.guess_type(download_name)[0] or 'application/octet-stream'
     return send_file(
         io.BytesIO(data),
@@ -1408,8 +1406,6 @@ def create_vault():
             return render_template('create.html')
 
         vault_id  = generate_vault_id()
-        vault_dir = os.path.join(UPLOAD_DIR, vault_id)
-        os.makedirs(vault_dir, exist_ok=True)
 
         saved_docs, errors = [], []
         base_url = request.host_url.rstrip('/')
@@ -1433,7 +1429,8 @@ def create_vault():
             # Files are encrypted at rest (services/crypto_utils.py) before
             # ever touching disk â€” size is measured from the plaintext the
             # user actually uploaded, not the (slightly larger) ciphertext.
-            size = encrypt_stream_to_path(f, os.path.join(vault_dir, unique))
+            size, ciphertext = encrypt_stream_to_bytes(f)
+            blob_put(f"uploads/{vault_id}/{unique}", ciphertext)
             
             doc_id = uuid.uuid4().hex
             
@@ -1553,7 +1550,7 @@ def serve_file(vault_id, doc_id):
     vault = _auth_vault(vault_id, with_documents=False)
     doc = get_document(vault_id, doc_id)
     if not doc: abort(404)
-    return send_encrypted_file(os.path.join(UPLOAD_DIR, vault_id, doc['stored_name']),
+    return send_encrypted_blob(f"uploads/{vault_id}/{doc['stored_name']}",
                                 doc['filename'], as_attachment=False)
 
 @app.route('/vault/<vault_id>/download/<doc_id>')
@@ -1562,7 +1559,7 @@ def download_file(vault_id, doc_id):
     vault = _auth_vault(vault_id, with_documents=False)
     doc = get_document(vault_id, doc_id)
     if not doc: abort(404)
-    return send_encrypted_file(os.path.join(UPLOAD_DIR, vault_id, doc['stored_name']),
+    return send_encrypted_blob(f"uploads/{vault_id}/{doc['stored_name']}",
                                 doc['filename'], as_attachment=True)
 
 # â”€â”€ Rename â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
@@ -1667,9 +1664,13 @@ def delete_vault(vault_id):
 
     purge_qr_files_for_vault(vault_id)
 
-    vault_dir = os.path.join(UPLOAD_DIR, vault_id)
-    if os.path.isdir(vault_dir):
-        shutil.rmtree(vault_dir, ignore_errors=True)
+    # Delete all blobs for this vault's documents from Vercel Blob Storage.
+    full_vault = get_vault(vault_id, with_documents=True)
+    for doc in full_vault.get('documents', []):
+        try:
+            blob_delete(f"uploads/{vault_id}/{doc['stored_name']}")
+        except Exception:
+            app.logger.exception("delete_vault: blob_delete failed for doc_id=%s", doc.get('doc_id'))
 
     db  = get_db()
     cur = db.cursor()
@@ -1690,9 +1691,10 @@ def delete_document(vault_id, doc_id):
     vault = _auth_vault(vault_id, with_documents=False)
     doc   = get_document(vault_id, doc_id)
     if doc:
-        fpath = os.path.join(UPLOAD_DIR, vault_id, doc['stored_name'])
-        if os.path.exists(fpath):
-            os.remove(fpath)
+        try:
+            blob_delete(f"uploads/{vault_id}/{doc['stored_name']}")
+        except Exception:
+            app.logger.exception("delete_document: blob_delete failed for doc_id=%s", doc_id)
         purge_doc_qr_file(doc_id)
         db  = get_db()
         cur = db.cursor()
@@ -1734,13 +1736,14 @@ def download_combined_pdf(vault_id):
     c    = canvas.Canvas(buf, pagesize=A4)
     W, H = A4
     for doc in vault['documents']:
-        fpath = os.path.join(UPLOAD_DIR, vault_id, doc['stored_name'])
-        if not os.path.exists(fpath):
+        blob_path = f"uploads/{vault_id}/{doc['stored_name']}"
+        if not blob_exists(blob_path):
             continue
         ftype = doc['file_type']
         if ftype in ('jpg', 'jpeg', 'png'):
             try:
-                img = ImageReader(io.BytesIO(decrypt_path_to_bytes(fpath)))
+                ciphertext = blob_get(blob_path)
+                img = ImageReader(io.BytesIO(decrypt_ciphertext_to_bytes(ciphertext)))
                 iw, ih = img.getSize()
                 ratio = min(W / iw, H / ih) * 0.9
                 nw, nh = iw * ratio, ih * ratio
@@ -1753,7 +1756,8 @@ def download_combined_pdf(vault_id):
         elif ftype == 'pdf':
             try:
                 import fitz
-                dp = fitz.open(stream=decrypt_path_to_bytes(fpath), filetype='pdf')
+                ciphertext = blob_get(blob_path)
+                dp = fitz.open(stream=decrypt_ciphertext_to_bytes(ciphertext), filetype='pdf')
                 for page in dp:
                     pix = page.get_pixmap(dpi=100)
                     id_ = io.BytesIO(pix.tobytes("png"))
@@ -1797,11 +1801,10 @@ def manage_vault(vault_id):
             if size > MAX_FILE_SIZE:
                 errors.append(f"{f.filename}: too large.")
                 continue
-            vault_dir = os.path.join(UPLOAD_DIR, vault_id)
-            os.makedirs(vault_dir, exist_ok=True)
             fname  = secure_filename(f.filename)
             unique = f"{uuid.uuid4().hex}_{fname}"
-            size = encrypt_stream_to_path(f, os.path.join(vault_dir, unique))
+            size, ciphertext = encrypt_stream_to_bytes(f)
+            blob_put(f"uploads/{vault_id}/{unique}", ciphertext)
             
             doc_id = uuid.uuid4().hex
             
@@ -1912,9 +1915,13 @@ def delete_account():
     # about to cascade-delete, but files on disk never do.
     for vault_id in vault_ids:
         purge_qr_files_for_vault(vault_id)
-        vault_dir = os.path.join(UPLOAD_DIR, vault_id)
-        if os.path.isdir(vault_dir):
-            shutil.rmtree(vault_dir, ignore_errors=True)
+        # Delete all document blobs for this vault from Vercel Blob Storage.
+        cur.execute("SELECT stored_name FROM documents WHERE vault_id = %s", (vault_id,))
+        for row in cur.fetchall():
+            try:
+                blob_delete(f"uploads/{vault_id}/{row['stored_name']}")
+            except Exception:
+                app.logger.exception("delete_account: blob_delete failed for vault_id=%s stored=%s", vault_id, row['stored_name'])
 
     # ai_queries isn't reachable via vault_id cascade (it's keyed on
     # owner_email directly), so it needs its own explicit delete.
@@ -2169,8 +2176,9 @@ def export_my_data():
 
         for doc in documents:
             try:
-                disk_path = os.path.join(UPLOAD_DIR, doc['vault_id'], doc['stored_name'])
-                data = decrypt_path_to_bytes(disk_path)
+                blob_path = f"uploads/{doc['vault_id']}/{doc['stored_name']}"
+                ciphertext = blob_get(blob_path)
+                data = decrypt_ciphertext_to_bytes(ciphertext)
                 safe_vault = secure_filename(doc['vault_name']) or doc['vault_id']
                 zf.writestr(f"documents/{safe_vault}/{doc['filename']}", data)
             except Exception:
@@ -2481,7 +2489,7 @@ def serve_doc_file(doc_id):
     if not is_owner and doc['access_type'] in ('onetime', 'limit') and is_session_auth:
         session.pop(f'doc_auth_{doc_id}', None)
 
-    return send_encrypted_file(os.path.join(UPLOAD_DIR, doc['vault_id'], doc['stored_name']),
+    return send_encrypted_blob(f"uploads/{doc['vault_id']}/{doc['stored_name']}",
                                 doc['filename'], as_attachment=as_attachment)
 
 # â”€â”€ Document QR Download â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
@@ -2804,7 +2812,7 @@ def serve_shared_file(share_id, doc_id):
         return render_template('shared_viewer.html', doc=doc, file_url=file_web_path, link=link, share_id=share_id)
         
     as_attachment = (action == 'download')
-    return send_encrypted_file(os.path.join(UPLOAD_DIR, doc['vault_id'], doc['stored_name']),
+    return send_encrypted_blob(f"uploads/{doc['vault_id']}/{doc['stored_name']}",
                                 doc['filename'], as_attachment=as_attachment)
 
 @app.route('/shared/<share_id>/file/<doc_id>/raw', methods=['GET'])
@@ -2846,7 +2854,7 @@ def serve_shared_file_raw(share_id, doc_id):
     # of the link's allow_download setting â€” it exists only to embed the
     # document for viewing.
     # Inline serve only
-    return send_encrypted_file(os.path.join(UPLOAD_DIR, doc['vault_id'], doc['stored_name']),
+    return send_encrypted_blob(f"uploads/{doc['vault_id']}/{doc['stored_name']}",
                                 doc['filename'], as_attachment=False)
 
 @app.route('/vault/<vault_id>/share/<share_id>/revoke', methods=['POST'])
