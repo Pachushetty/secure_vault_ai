@@ -45,6 +45,7 @@ retrieval will refuse to proceed rather than silently storing plaintext.
 """
 import os
 import base64
+import hashlib
 import logging
 from cryptography.fernet import Fernet, InvalidToken, MultiFernet
 
@@ -61,11 +62,11 @@ def _load_or_create_key():
     if env_key:
         return env_key.encode('utf-8')
 
-    if os.environ.get('VERCEL'):
-        raise RuntimeError(
-            "FILE_ENCRYPTION_KEY environment variable is required in production on Vercel. "
-            "Set FILE_ENCRYPTION_KEY in your Vercel Project Settings."
-        )
+    # If FLASK_SECRET_KEY is provided in production, derive a deterministic Fernet key
+    flask_secret = os.environ.get('FLASK_SECRET_KEY') or os.environ.get('SECRET_KEY')
+    if flask_secret:
+        derived = base64.urlsafe_b64encode(hashlib.sha256(flask_secret.encode('utf-8')).digest())
+        return derived
 
     if os.path.exists(KEY_FILE):
         try:
@@ -75,14 +76,15 @@ def _load_or_create_key():
             pass
 
     key = Fernet.generate_key()
-    try:
-        os.makedirs(os.path.dirname(KEY_FILE), exist_ok=True)
-        # 0600: readable/writable by the owning process only.
-        fd = os.open(KEY_FILE, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
-        with os.fdopen(fd, 'wb') as f:
-            f.write(key)
-    except OSError as exc:
-        logger.warning("Could not write KEY_FILE to disk (%s), using in-memory key", exc)
+    if not os.environ.get('VERCEL') and not os.environ.get('BLOB_READ_WRITE_TOKEN'):
+        try:
+            os.makedirs(os.path.dirname(KEY_FILE), exist_ok=True)
+            # 0600: readable/writable by the owning process only.
+            fd = os.open(KEY_FILE, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+            with os.fdopen(fd, 'wb') as f:
+                f.write(key)
+        except OSError as exc:
+            logger.warning("Could not write KEY_FILE to disk (%s), using in-memory key", exc)
     return key
 
 
