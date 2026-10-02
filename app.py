@@ -78,9 +78,8 @@ limiter = Limiter(
 )
 
 BASE_DIR      = os.path.dirname(os.path.abspath(__file__))
-# Encrypted documents are stored in Vercel Blob (BLOB_READ_WRITE_TOKEN).
-# QR codes contain no document content and are served by Flask normally.
-QR_DIR        = os.path.join(BASE_DIR, 'static', 'qrcodes')
+# Encrypted documents are stored in Vercel Private Blob (production) or local private_storage (local dev).
+# QR codes are generated dynamically in-memory without filesystem writes.
 SECRET_FILE   = os.path.join(BASE_DIR, 'instance', 'secret.key')
 
 ALLOWED_EXT   = {'pdf', 'jpg', 'jpeg', 'png', 'docx', 'txt', 'bmp', 'webp', 'tiff', 'jfif'}
@@ -88,8 +87,8 @@ MAX_FILE_MB   = 16
 MAX_FILE_SIZE = MAX_FILE_MB * 1024 * 1024
 
 # Google Sign-In (Google Identity Services). The Client ID is public by
-# design â€” it's baked into the page so the browser can talk to Google
-# directly â€” but every credential that comes back is still verified
+# design — it's baked into the page so the browser can talk to Google
+# directly — but every credential that comes back is still verified
 # server-side (see google_signin() below) before anyone is logged in.
 GOOGLE_CLIENT_ID   = os.environ.get('GOOGLE_CLIENT_ID', '')
 RESEND_API_KEY     = os.environ.get('RESEND_API_KEY', '').strip().strip('"\'')
@@ -102,8 +101,12 @@ GMAIL_APP_PASSWORD = (os.environ.get('GMAIL_APP_PASSWORD') or os.environ.get('GM
 TERMS_VERSION      = '2026-08-17'
 LEGAL_UPDATED_DATE  = 'August 17, 2026'
 
-os.makedirs(QR_DIR,     exist_ok=True)
-os.makedirs(os.path.join(BASE_DIR, 'instance'), exist_ok=True)
+# Only attempt to create instance directory in local development when writable
+if not os.environ.get('VERCEL') and not os.environ.get('BLOB_READ_WRITE_TOKEN'):
+    try:
+        os.makedirs(os.path.join(BASE_DIR, 'instance'), exist_ok=True)
+    except OSError:
+        pass
 
 # Belt-and-suspenders: reject oversized request bodies at the Flask/Werkzeug
 # level too, not just the manual MAX_FILE_SIZE check further down.
@@ -150,12 +153,20 @@ def inject_globals():
 if os.environ.get('FLASK_SECRET_KEY'):
     app.secret_key = os.environ['FLASK_SECRET_KEY']
 elif os.path.exists(SECRET_FILE):
-    with open(SECRET_FILE, 'r') as f:
-        app.secret_key = f.read().strip()
+    try:
+        with open(SECRET_FILE, 'r') as f:
+            app.secret_key = f.read().strip()
+    except OSError:
+        app.secret_key = secrets.token_hex(32)
 else:
     app.secret_key = secrets.token_hex(32)
-    with open(SECRET_FILE, 'w') as f:
-        f.write(app.secret_key)
+    if not os.environ.get('VERCEL') and not os.environ.get('BLOB_READ_WRITE_TOKEN'):
+        try:
+            os.makedirs(os.path.dirname(SECRET_FILE), exist_ok=True)
+            with open(SECRET_FILE, 'w') as f:
+                f.write(app.secret_key)
+        except OSError:
+            pass
 
 # â”€â”€ Session config â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(days=30)
@@ -362,7 +373,7 @@ def _find_font(bold=False):
             return path
     return None
 
-def generate_qr_card(name, url, output_path):
+def generate_qr_card(name, url, output_path=None):
     card_w, card_h = 400, 520
     border_color = (30, 41, 59) # Slate 800
     text_color = (15, 23, 42)    # Slate 900
@@ -437,11 +448,20 @@ def generate_qr_card(name, url, output_path):
     fw, fh = get_text_size(draw, footer_text, font_sub)
     draw.text(((card_w - fw) / 2, 475), footer_text, fill=muted_color, font=font_sub)
     
-    img.save(output_path, "PNG")
-    return output_path
+    buf = io.BytesIO()
+    img.save(buf, "PNG")
+    data = buf.getvalue()
+    if output_path:
+        try:
+            with open(output_path, "wb") as f:
+                f.write(data)
+        except OSError:
+            pass
+        return output_path
+    return data
 
-def generate_clean_qr(url, output_path, box_size=10, border=2):
-    """Generate pure clean QR code image without outer frame or text labels."""
+def generate_clean_qr(url, output_path=None, box_size=10, border=2):
+    """Generate pure clean QR code image in memory without outer frame or text labels."""
     qr = qrcode.QRCode(
         version=1,
         error_correction=qrcode.constants.ERROR_CORRECT_H,
@@ -451,39 +471,26 @@ def generate_clean_qr(url, output_path, box_size=10, border=2):
     qr.add_data(url)
     qr.make(fit=True)
     qr_img = qr.make_image(fill_color="#0f172a", back_color="white").convert("RGBA")
-    qr_img.save(output_path, "PNG")
-    return output_path
+    buf = io.BytesIO()
+    qr_img.save(buf, "PNG")
+    data = buf.getvalue()
+    if output_path:
+        try:
+            with open(output_path, "wb") as f:
+                f.write(data)
+        except OSError:
+            pass
+        return output_path
+    return data
 
 def generate_vault_qr(vault_name, vault_id, base_url):
-    vault_url = f"{base_url}/vault/{vault_id}"
-    # 1. Clean QR image for display in web UI
-    clean_path = os.path.join(QR_DIR, f"{vault_id}.png")
-    generate_clean_qr(vault_url, clean_path)
-    # 2. Stylized card with title, name & security note for download
-    card_path = os.path.join(QR_DIR, f"{vault_id}_card.png")
-    generate_qr_card(vault_name, vault_url, card_path)
-    return clean_path
+    return f"/static/qrcodes/{vault_id}.png"
 
 def generate_doc_qr(doc_name, doc_id, base_url):
-    doc_url = f"{base_url}/document/{doc_id}"
-    # 1. Clean QR image for web display
-    clean_path = os.path.join(QR_DIR, f"doc_{doc_id}.png")
-    generate_clean_qr(doc_url, clean_path)
-    # 2. Stylized card for download
-    card_path = os.path.join(QR_DIR, f"doc_{doc_id}_card.png")
-    generate_qr_card(doc_name, doc_url, card_path)
-    return clean_path
+    return f"/static/qrcodes/doc_{doc_id}.png"
 
 def generate_share_qr(display_name, share_id, share_url):
-    """Same clean-vs-card split as document/vault QRs: a plain QR (no
-    header/footer text) for inline on-screen display, and a separate
-    stylized card (with the SecureVault header, name & security footer)
-    used only for the downloadable QR file."""
-    clean_path = os.path.join(QR_DIR, f"share_{share_id}.png")
-    generate_clean_qr(share_url, clean_path)
-    card_path = os.path.join(QR_DIR, f"share_{share_id}_card.png")
-    generate_qr_card(display_name, share_url, card_path)
-    return clean_path
+    return f"/static/qrcodes/share_{share_id}.png"
 
 # â”€â”€ Data access helpers (replace old load_db/save_db) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 def get_user(email):
@@ -1589,35 +1596,13 @@ def rename_document(vault_id, doc_id):
 
 # â”€â”€ Delete Vault â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 def purge_doc_qr_file(doc_id):
-    for path in (os.path.join(QR_DIR, f"doc_{doc_id}.png"),
-                 os.path.join(QR_DIR, f"doc_{doc_id}_card.png")):
-        if os.path.exists(path):
-            os.remove(path)
+    pass
 
 def purge_share_qr_file(share_id):
-    for path in (os.path.join(QR_DIR, f"share_{share_id}.png"),
-                 os.path.join(QR_DIR, f"share_{share_id}_card.png")):
-        if os.path.exists(path):
-            os.remove(path)
+    pass
 
 def purge_qr_files_for_vault(vault_id):
-    """Remove every QR PNG tied to a vault (its own QR, every document's QR,
-    and every share link's QR) before the vault row is deleted. The DB rows
-    for documents/shared_links cascade-delete automatically via foreign
-    keys, but the generated image files on disk don't â€” without this,
-    deleting a vault leaves its QR images behind forever (retention gap)."""
-    db = get_db()
-    cur = db.cursor()
-    cur.execute("SELECT doc_id FROM documents WHERE vault_id = %s", (vault_id,))
-    for row in cur.fetchall():
-        purge_doc_qr_file(row['doc_id'])
-    cur.execute("SELECT share_id FROM shared_links WHERE vault_id = %s", (vault_id,))
-    for row in cur.fetchall():
-        purge_share_qr_file(row['share_id'])
-    for vault_qr in (os.path.join(QR_DIR, f"{vault_id}.png"),
-                      os.path.join(QR_DIR, f"{vault_id}_card.png")):
-        if os.path.exists(vault_qr):
-            os.remove(vault_qr)
+    pass
 
 # ── Rename Vault / Folder ──────────────────────────────────────────────────
 @app.route('/vault/<vault_id>/rename-vault', methods=['POST'])
@@ -1714,17 +1699,12 @@ def delete_document(vault_id, doc_id):
 # â”€â”€ QR Download â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 @app.route('/vault/<vault_id>/qr')
 def download_qr(vault_id):
-    card_path = os.path.join(QR_DIR, f"{vault_id}_card.png")
-    clean_path = os.path.join(QR_DIR, f"{vault_id}.png")
-    path = card_path if os.path.exists(card_path) else clean_path
-    if not os.path.exists(path):
-        vault = get_vault(vault_id, with_documents=False)
-        if vault:
-            generate_vault_qr(vault['vault_name'], vault_id, request.host_url.rstrip('/'))
-            path = card_path if os.path.exists(card_path) else clean_path
-        else:
-            abort(404)
-    return send_file(path, as_attachment=True,
+    vault = get_vault(vault_id, with_documents=False)
+    if not vault:
+        abort(404)
+    vault_url = f"{request.host_url.rstrip('/')}/vault/{vault_id}"
+    card_bytes = generate_qr_card(vault['vault_name'], vault_url)
+    return send_file(io.BytesIO(card_bytes), mimetype='image/png', as_attachment=True,
                      download_name=f"vault_qr_{vault_id[:8]}.png")
 
 # â”€â”€ Combined PDF â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
@@ -2495,20 +2475,15 @@ def serve_doc_file(doc_id):
 # â”€â”€ Document QR Download â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 @app.route('/document/<doc_id>/qr')
 def download_doc_qr(doc_id):
-    card_path = os.path.join(QR_DIR, f"doc_{doc_id}_card.png")
-    clean_path = os.path.join(QR_DIR, f"doc_{doc_id}.png")
-    path = card_path if os.path.exists(card_path) else clean_path
-    if not os.path.exists(path):
-        db = get_db()
-        cur = db.cursor()
-        cur.execute("SELECT filename FROM documents WHERE doc_id = %s", (doc_id,))
-        doc = cur.fetchone()
-        if doc:
-            generate_doc_qr(doc['filename'], doc_id, request.host_url.rstrip('/'))
-            path = card_path if os.path.exists(card_path) else clean_path
-        else:
-            abort(404)
-    return send_file(path, as_attachment=True,
+    db = get_db()
+    cur = db.cursor()
+    cur.execute("SELECT filename FROM documents WHERE doc_id = %s", (doc_id,))
+    doc = cur.fetchone()
+    if not doc:
+        abort(404)
+    doc_url = f"{request.host_url.rstrip('/')}/document/{doc_id}"
+    card_bytes = generate_qr_card(doc['filename'], doc_url)
+    return send_file(io.BytesIO(card_bytes), mimetype='image/png', as_attachment=True,
                      download_name=f"doc_qr_{doc_id[:8]}.png")
 
 # â”€â”€ Secure Sharing Helpers & Routes â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
@@ -2638,14 +2613,64 @@ def create_share_link(vault_id):
 
 @app.route('/shared/qr/<share_id>')
 def download_share_qr(share_id):
-    path = os.path.join(QR_DIR, f"share_{share_id}_card.png")
-    if not os.path.exists(path):
-        # Fallback for share links created before the clean/card QR split
-        path = os.path.join(QR_DIR, f"share_{share_id}.png")
-    if not os.path.exists(path):
+    db = get_db()
+    cur = db.cursor()
+    cur.execute("SELECT v.vault_name FROM shared_links s JOIN vaults v ON s.vault_id = v.vault_id WHERE s.share_id = %s", (share_id,))
+    row = cur.fetchone()
+    if not row:
         abort(404)
-    return send_file(path, as_attachment=True,
+    share_url = f"{request.host_url.rstrip('/')}/shared/{share_id}"
+    card_bytes = generate_qr_card(f"Shared Selection - {row['vault_name']}", share_url)
+    return send_file(io.BytesIO(card_bytes), mimetype='image/png', as_attachment=True,
                      download_name=f"share_qr_{share_id[:8]}.png")
+
+@app.route('/static/qrcodes/<path:filename>')
+def serve_qr_image(filename):
+    """Dynamically generate and serve QR code PNG images in memory without disk writes."""
+    base_url = request.host_url.rstrip('/')
+    is_card = filename.endswith('_card.png')
+    name = filename[:-9] if is_card else filename[:-4]
+
+    if name.startswith('doc_'):
+        doc_id = name[4:]
+        db = get_db()
+        cur = db.cursor()
+        cur.execute("SELECT filename FROM documents WHERE doc_id = %s", (doc_id,))
+        row = cur.fetchone()
+        doc_name = row['filename'] if row else f"Document {doc_id[:8]}"
+        doc_url = f"{base_url}/document/{doc_id}"
+        if is_card:
+            img_bytes = generate_qr_card(doc_name, doc_url)
+        else:
+            img_bytes = generate_clean_qr(doc_url)
+    elif name.startswith('share_'):
+        share_id = name[6:]
+        db = get_db()
+        cur = db.cursor()
+        cur.execute("SELECT v.vault_name FROM shared_links s JOIN vaults v ON s.vault_id = v.vault_id WHERE s.share_id = %s", (share_id,))
+        row = cur.fetchone()
+        vault_name = row['vault_name'] if row else "Shared Vault"
+        share_url = f"{base_url}/shared/{share_id}"
+        if is_card:
+            img_bytes = generate_qr_card(f"Shared Selection - {vault_name}", share_url)
+        else:
+            img_bytes = generate_clean_qr(share_url)
+    else:
+        vault_id = name
+        db = get_db()
+        cur = db.cursor()
+        cur.execute("SELECT vault_name FROM vaults WHERE vault_id = %s", (vault_id,))
+        row = cur.fetchone()
+        vault_name = row['vault_name'] if row else f"Vault {vault_id[:8]}"
+        vault_url = f"{base_url}/vault/{vault_id}"
+        if is_card:
+            img_bytes = generate_qr_card(vault_name, vault_url)
+        else:
+            img_bytes = generate_clean_qr(vault_url)
+
+    response = send_file(io.BytesIO(img_bytes), mimetype='image/png')
+    response.headers['Cache-Control'] = 'public, max-age=3600'
+    return response
 
 @app.route('/shared/<share_id>', methods=['GET'])
 def view_shared_vault(share_id):

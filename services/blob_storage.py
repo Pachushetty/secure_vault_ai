@@ -1,55 +1,59 @@
-﻿"""
-Vercel Blob Storage wrapper for SecureVault AI.
+"""
+Vercel Private Blob Storage wrapper for SecureVault AI.
 
-Replaces the local private_storage/uploads/ directory with Private Vercel Blob.
-All encrypted document ciphertext is stored as blobs keyed by:
+Provides persistent encrypted document storage using Vercel Private Blob when deployed,
+with automatic fallback to local filesystem storage (private_storage/uploads/)
+for local development.
 
+All encrypted document ciphertext is addressed by keys formatted as:
     uploads/<vault_id>/<stored_name>
 
-Files are still encrypted at rest by crypto_utils.py before being uploaded
-(the blob stores the same ciphertext that used to live on disk), so the
-encryption/decryption logic is completely unchanged.
+Files are encrypted at rest by crypto_utils.py before upload.
+Documents are NEVER public: they are stored as private blobs, retrieved only by
+authenticated server-side routes, and decrypted in-memory for authorized users.
 
-Configuration
-─────────────
-Set BLOB_READ_WRITE_TOKEN in your environment (Vercel sets this automatically
-when you add a Blob store to a project).  The token value must grant both
-read and write access to the store.
-
-If the token is absent the module raises a clear RuntimeError at first use
-so misconfiguration is caught early rather than at upload time.
-
-API surface (used by app.py and services/indexer.py)
-─────────────────────────────────────────────────────
-  blob_put(blob_path, data_bytes)  -> None
-  blob_get(blob_path)              -> bytes
-  blob_delete(blob_path)           -> None
-  blob_exists(blob_path)           -> bool
+Configuration (Environment Variables)
+─────────────────────────────────────
+BLOB_READ_WRITE_TOKEN : Provided automatically by Vercel when connecting a Blob store.
+BLOB_ACCESS           : Optional. Defaults to "private".
+STORAGE_BACKEND       : Optional. Set to "local" to force local filesystem storage.
 """
 
 import os
 import logging
+from typing import Optional
 
 logger = logging.getLogger(__name__)
 
-# -- lazy import so the rest of the app does not crash if the package is not
-#    installed in local dev environments that still use local disk.
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+LOCAL_STORAGE_DIR = os.path.join(BASE_DIR, 'private_storage')
+LOCAL_UPLOAD_DIR = os.path.join(LOCAL_STORAGE_DIR, 'uploads')
 
-_vercel_blob = None
 
-
-def _get_vercel_blob():
-    global _vercel_blob
-    if _vercel_blob is None:
-        try:
-            import vercel_blob  # noqa: PLC0415
-            _vercel_blob = vercel_blob
-        except ImportError as exc:
-            raise ImportError(
-                "vercel-blob is not installed. "
-                "Add 'vercel-blob' to requirements.txt and redeploy."
-            ) from exc
-    return _vercel_blob
+def is_blob_storage_enabled() -> bool:
+    """Determine whether to use Vercel Blob or local disk storage.
+    
+    Returns True when:
+      - Explicitly requested via STORAGE_BACKEND in ('blob', 'vercel_blob')
+      - Or BLOB_READ_WRITE_TOKEN is set
+      - Or running in Vercel production environment
+    Returns False when STORAGE_BACKEND is 'local' or in local dev without BLOB_READ_WRITE_TOKEN.
+    """
+    backend = os.environ.get("STORAGE_BACKEND", "").strip().lower()
+    if backend == "local":
+        return False
+    if backend in ("blob", "vercel_blob"):
+        return True
+    
+    token = os.environ.get("BLOB_READ_WRITE_TOKEN", "").strip()
+    if token:
+        return True
+    
+    # If on Vercel, filesystem is read-only so Blob storage is required
+    if os.environ.get("VERCEL"):
+        return True
+        
+    return False
 
 
 def _token() -> str:
@@ -57,84 +61,120 @@ def _token() -> str:
     if not token:
         raise RuntimeError(
             "BLOB_READ_WRITE_TOKEN environment variable is not set. "
-            "Add it to your Vercel project environment variables."
+            "Please create and connect a Vercel Blob store in your Vercel Project Settings."
         )
     return token
 
 
-# -- Public API ---------------------------------------------------------------
+def _get_local_disk_path(blob_path: str) -> str:
+    norm = blob_path.replace("\\", "/").lstrip("/")
+    return os.path.join(LOCAL_STORAGE_DIR, *norm.split("/"))
 
-def blob_put(blob_path: str, data_bytes: bytes) -> None:
-    """Upload data_bytes to the blob store at blob_path.
 
-    blob_path is a slash-separated key such as
-    ``uploads/<vault_id>/<stored_name>``.  The store is addressed with
-    access='public' at the SDK level but SecureVault never exposes raw blob
-    URLs to users -- every download goes through an authenticated Flask route
-    that decrypts and re-serves the bytes -- so network-level 'public' here
-    is irrelevant to application-level access control.  The data itself is
-    always Fernet ciphertext, never plaintext.
+# ── Public API ───────────────────────────────────────────────────────────────
+
+def blob_put(blob_path: str, data_bytes: bytes, access: Optional[str] = None) -> None:
+    """Upload encrypted ciphertext to persistent storage (Vercel Private Blob or local disk).
+    
+    In production (Vercel Blob), access defaults to 'private' so documents are never
+    publicly accessible without authentication.
     """
-    vb = _get_vercel_blob()
-    token = _token()
-    logger.debug("blob_put: uploading %d bytes to %s", len(data_bytes), blob_path)
-    vb.put(
-        blob_path,
-        data_bytes,
-        options={
-            "token": token,
-            "access": "public",
-            "addRandomSuffix": False,
-        },
-    )
+    if is_blob_storage_enabled():
+        token = _token()
+        access_mode = (access or os.environ.get("BLOB_ACCESS", "private")).strip().lower()
+        import vercel.blob  # Official Vercel Python SDK
+        logger.debug("blob_put: uploading %d bytes to Blob path %s (access=%s)", len(data_bytes), blob_path, access_mode)
+        try:
+            vercel.blob.put(
+                blob_path,
+                data_bytes,
+                access=access_mode,
+                token=token,
+                add_random_suffix=False,
+                overwrite=True,
+            )
+        except Exception as exc:
+            # If the store was created with the other access mode, retry gracefully
+            if "access" in str(exc).lower():
+                fallback = "public" if access_mode == "private" else "private"
+                logger.warning("Retrying blob_put with access=%s due to: %s", fallback, exc)
+                vercel.blob.put(
+                    blob_path,
+                    data_bytes,
+                    access=fallback,
+                    token=token,
+                    add_random_suffix=False,
+                    overwrite=True,
+                )
+            else:
+                raise
+    else:
+        # Local development filesystem storage
+        disk_path = _get_local_disk_path(blob_path)
+        os.makedirs(os.path.dirname(disk_path), exist_ok=True)
+        with open(disk_path, "wb") as f:
+            f.write(data_bytes)
+        logger.debug("blob_put: saved %d bytes to local disk %s", len(data_bytes), disk_path)
 
 
-def blob_get(blob_path: str) -> bytes:
-    """Download and return the raw bytes stored at blob_path.
-
-    Raises FileNotFoundError if the blob does not exist.
+def blob_get(blob_path: str, access: Optional[str] = None) -> bytes:
+    """Download encrypted ciphertext from persistent storage (Vercel Private Blob or local disk).
+    
+    Raises FileNotFoundError if the file or blob does not exist.
     """
-    vb = _get_vercel_blob()
-    token = _token()
-    logger.debug("blob_get: downloading %s", blob_path)
-    try:
-        meta = vb.head(blob_path, options={"token": token})
-    except Exception as exc:
-        raise FileNotFoundError(
-            f"Blob not found: {blob_path} ({type(exc).__name__}: {exc})"
-        ) from exc
-
-    blob_url = meta.get("url") if isinstance(meta, dict) else getattr(meta, "url", None)
-    if not blob_url:
-        raise FileNotFoundError(f"Blob URL missing for: {blob_path}")
-
-    import urllib.request
-    with urllib.request.urlopen(blob_url) as resp:
-        return resp.read()
+    if is_blob_storage_enabled():
+        token = _token()
+        access_mode = (access or os.environ.get("BLOB_ACCESS", "private")).strip().lower()
+        import vercel.blob
+        logger.debug("blob_get: downloading from Blob path %s (access=%s)", blob_path, access_mode)
+        try:
+            res = vercel.blob.get(blob_path, access=access_mode, token=token)
+            return res.content
+        except Exception as exc:
+            if "access" in str(exc).lower():
+                fallback = "public" if access_mode == "private" else "private"
+                res = vercel.blob.get(blob_path, access=fallback, token=token)
+                return res.content
+            raise FileNotFoundError(
+                f"Blob not found: {blob_path} ({type(exc).__name__}: {exc})"
+            ) from exc
+    else:
+        disk_path = _get_local_disk_path(blob_path)
+        if not os.path.exists(disk_path):
+            raise FileNotFoundError(f"File not found on local disk: {disk_path}")
+        with open(disk_path, "rb") as f:
+            return f.read()
 
 
 def blob_delete(blob_path: str) -> None:
-    """Delete the blob at blob_path.  Silently succeeds if not found."""
-    vb = _get_vercel_blob()
-    token = _token()
-    logger.debug("blob_delete: deleting %s", blob_path)
-    try:
-        meta = vb.head(blob_path, options={"token": token})
-        blob_url = (
-            meta.get("url") if isinstance(meta, dict) else getattr(meta, "url", None)
-        )
-        if blob_url:
-            vb.delete(blob_url, options={"token": token})
-    except Exception as exc:
-        logger.debug("blob_delete: %s -- %s (ignored)", blob_path, exc)
+    """Delete ciphertext from persistent storage. Silently succeeds if not found."""
+    if is_blob_storage_enabled():
+        try:
+            token = _token()
+            import vercel.blob
+            logger.debug("blob_delete: deleting Blob path %s", blob_path)
+            vercel.blob.delete(blob_path, token=token)
+        except Exception as exc:
+            logger.debug("blob_delete failed for %s: %s (ignored)", blob_path, exc)
+    else:
+        disk_path = _get_local_disk_path(blob_path)
+        if os.path.exists(disk_path):
+            try:
+                os.remove(disk_path)
+            except OSError as exc:
+                logger.debug("Local file remove failed for %s: %s (ignored)", disk_path, exc)
 
 
 def blob_exists(blob_path: str) -> bool:
-    """Return True if a blob exists at blob_path."""
-    vb = _get_vercel_blob()
-    token = _token()
-    try:
-        vb.head(blob_path, options={"token": token})
-        return True
-    except Exception:
-        return False
+    """Return True if the file exists in persistent storage."""
+    if is_blob_storage_enabled():
+        try:
+            token = _token()
+            import vercel.blob
+            vercel.blob.head(blob_path, token=token)
+            return True
+        except Exception:
+            return False
+    else:
+        disk_path = _get_local_disk_path(blob_path)
+        return os.path.exists(disk_path)

@@ -61,16 +61,28 @@ def _load_or_create_key():
     if env_key:
         return env_key.encode('utf-8')
 
-    os.makedirs(os.path.dirname(KEY_FILE), exist_ok=True)
+    if os.environ.get('VERCEL'):
+        raise RuntimeError(
+            "FILE_ENCRYPTION_KEY environment variable is required in production on Vercel. "
+            "Set FILE_ENCRYPTION_KEY in your Vercel Project Settings."
+        )
+
     if os.path.exists(KEY_FILE):
-        with open(KEY_FILE, 'rb') as f:
-            return f.read().strip()
+        try:
+            with open(KEY_FILE, 'rb') as f:
+                return f.read().strip()
+        except OSError:
+            pass
 
     key = Fernet.generate_key()
-    # 0600: readable/writable by the owning process only.
-    fd = os.open(KEY_FILE, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
-    with os.fdopen(fd, 'wb') as f:
-        f.write(key)
+    try:
+        os.makedirs(os.path.dirname(KEY_FILE), exist_ok=True)
+        # 0600: readable/writable by the owning process only.
+        fd = os.open(KEY_FILE, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+        with os.fdopen(fd, 'wb') as f:
+            f.write(key)
+    except OSError as exc:
+        logger.warning("Could not write KEY_FILE to disk (%s), using in-memory key", exc)
     return key
 
 
